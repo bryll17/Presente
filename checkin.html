@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B4F3F">
+<title>Presente — Online check-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script defer src="jsqr.js"></script>
+<style>
+:root{
+  --board:#0B4F3F; --chalk:#FFFDF6; --paper:#F4F5F1; --card:#FFFFFF;
+  --ink:#1B2420; --ink-soft:#5A665F; --line:#DDE2DB;
+  --p:#1E9E5A; --a:#D6453D; --dup:#8B6A00;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --body:'Public Sans',system-ui,-apple-system,sans-serif;
+  --disp:'Archivo Black','Public Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--body);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.45;min-height:100vh}
+.head{background:var(--board);color:var(--chalk);padding:14px 16px;display:flex;align-items:baseline;gap:10px}
+.brand{font-family:var(--disp);font-size:20px}
+.sub{font-family:var(--mono);font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}
+main{max-width:520px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+h2{font-size:17px;margin-bottom:8px}
+.muted{color:var(--ink-soft);font-size:14px}
+.mono{font-family:var(--mono)}
+.btn{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border:1.5px solid var(--board);
+  border-radius:10px;font-weight:700;background:var(--board);color:var(--chalk);width:100%;cursor:pointer;font-size:16px;font-family:var(--body)}
+.btn.soft{background:var(--card);color:var(--ink);border-color:var(--line);font-weight:600}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.stack>*+*{margin-top:10px}
+input{font-family:var(--mono);font-size:15px;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;width:100%;min-height:48px}
+#camWrap{position:relative;border-radius:12px;overflow:hidden;background:#101513;aspect-ratio:3/4;max-height:52vh;display:none;margin-top:10px}
+#camWrap.on{display:block}
+#cam{width:100%;height:100%;object-fit:cover}
+#aim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#aim span{width:62%;max-width:260px;aspect-ratio:1;border:3px solid rgba(255,253,246,.85);border-radius:16px;box-shadow:0 0 0 2000px rgba(8,20,16,.28)}
+#result{border-radius:14px;padding:24px 18px;text-align:center;color:#fff;display:none;transform:rotate(-1.5deg);border:4px solid rgba(255,255,255,.55)}
+#result.show{display:block}
+#result.ok{background:var(--p)}#result.already{background:var(--dup)}#result.err{background:var(--a)}
+#rStatus{font-family:var(--mono);font-size:13px;letter-spacing:3px;text-transform:uppercase;opacity:.9}
+#rName{font-family:var(--disp);font-size:clamp(26px,8vw,38px);line-height:1.05;margin:8px 0;word-break:break-word}
+#rMeta{font-family:var(--mono);font-size:13px;opacity:.9}
+#count{font-family:var(--mono);font-size:13px;color:var(--ink-soft)}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<header class="head"><span class="brand">PRESENTE</span><span class="sub">online check-in</span></header>
+<main>
+  <div class="card" id="infoCard">
+    <h2 id="clsName">Loading…</h2>
+    <p class="muted" id="clsInfo">Checking this link…</p>
+    <p id="count" style="margin-top:6px"></p>
+  </div>
+
+  <div class="card" id="actions" style="display:none">
+    <p class="muted" style="margin-bottom:10px">Mark yourself present using <b>your own</b> QR card from your teacher:</p>
+    <div class="stack">
+      <button class="btn" id="btnCam">Scan my QR card</button>
+      <div id="camWrap"><video id="cam" playsinline muted></video><div id="aim"><span></span></div></div>
+      <button class="btn soft" id="btnPhoto">Upload a photo of my QR</button>
+      <input type="file" id="photoIn" accept="image/*" capture="environment" class="hidden">
+      <details style="border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:var(--card)">
+        <summary style="min-height:48px;display:flex;align-items:center;font-weight:700;cursor:pointer">No QR? Type your code</summary>
+        <div style="padding:0 0 12px">
+          <input id="codeIn" placeholder="Paste the code your teacher sent" autocapitalize="off" autocomplete="off">
+          <button class="btn soft" id="btnCode" style="margin-top:8px">Submit code</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <div id="result"><div id="rStatus"></div><div id="rName"></div><div id="rMeta"></div></div>
+
+  <p class="muted" style="text-align:center;margin-top:10px">Your check-in records your name and the exact time for your teacher.</p>
+</main>
+<canvas id="cv" class="hidden"></canvas>
+<script>
+'use strict';
+var $=function(s){return document.querySelector(s);};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+var qs=new URLSearchParams(location.search);
+var KEY=(qs.get('k')||'').trim();
+var SURL=(qs.get('s')||'').trim();
+var clockOffset=0, expiresTs=0, done=false, scanning=false, stream=null, lastDecode=0;
+
+function fmtT(ts){var d=new Date(ts);var h=d.getHours(),m=('0'+d.getMinutes()).slice(-2),s=('0'+d.getSeconds()).slice(-2);
+  var ap=h>=12?'PM':'AM';h=h%12;if(h===0)h=12;return h+':'+m+':'+s+' '+ap;}
+
+function fail(title,msg){
+  $('#clsName').textContent=title;
+  $('#clsInfo').textContent=msg;
+  $('#actions').style.display='none';
+  $('#count').textContent='';
+}
+
+function showResult(kind,status,name,meta){
+  var r=$('#result');
+  r.className=''; r.id='result'; r.classList.add('show',kind);
+  $('#rStatus').textContent=status;
+  $('#rName').textContent=name;
+  $('#rMeta').textContent=meta;
+  if(kind==='ok'||kind==='already'){ done=true; stopCam(); $('#actions').style.display='none'; }
+}
+
+function tick(){
+  if(!expiresTs) return;
+  var left=expiresTs-(Date.now()+clockOffset);
+  if(left<=0){
+    $('#count').textContent='This link has expired.';
+    if(!done) fail('Link expired','Ask your teacher for a new check-in link.');
+    return;
+  }
+  var m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
+  $('#count').textContent='Link closes in '+m+'m '+('0'+s).slice(-2)+'s';
+  setTimeout(tick,1000);
+}
+
+function init(){
+  if(!KEY||!SURL||SURL.indexOf('https://')!==0){
+    fail('This link is incomplete','Ask your teacher to send the check-in link again.');
+    return;
+  }
+  fetch(SURL+'?chk='+encodeURIComponent(KEY))
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(!j.ok){ fail('Link not recognized','Ask your teacher for a new check-in link.'); return; }
+      clockOffset=(j.now||Date.now())-Date.now();
+      expiresTs=Number(j.exp)||0;
+      if(!j.open){ fail('Link expired','Ask your teacher for a new check-in link.'); return; }
+      $('#clsName').textContent=j.cls||'Your class';
+      $('#clsInfo').textContent='Attendance check-in is open.';
+      $('#actions').style.display='block';
+      tick();
+    })
+    .catch(function(){ fail('Cannot reach the attendance system','Check your internet connection, then reload this page.'); });
+}
+
+function submitSid(sid){
+  if(done) return;
+  fetch(SURL,{method:'POST',body:JSON.stringify({op:'chk',k:KEY,sid:sid})})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j.ok){ showResult('ok','PRESENT ✓',j.name||'Marked',(j.cls?j.cls+' · ':'')+(j.tm||'')); return; }
+      if(j.err==='already'){ showResult('already','ALREADY MARKED',j.name||'You',(j.tm?'at '+j.tm:'')); return; }
+      if(j.err==='expired'){ showResult('err','LINK EXPIRED','Too late','Ask your teacher for a new link'); return; }
+      if(j.err==='unknown'){ showResult('err','NOT ON THE LIST','Code not recognized','Tell your teacher'); return; }
+      showResult('err','ERROR',j.err||'Try again','');
+    })
+    .catch(function(){ showResult('err','NO CONNECTION','Try again','Check your internet'); });
+}
+
+function handlePayload(text){
+  text=(text||'').trim();
+  if(!text) return;
+  var sid=text;
+  var parts=text.split('|');
+  if(parts.length===3&&parts[0]==='P1') sid=parts[2];
+  submitSid(sid);
+}
+
+function stopCam(){
+  scanning=false;
+  if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
+  $('#cam').srcObject=null;
+  $('#camWrap').classList.remove('on');
+  $('#btnCam').textContent='Scan my QR card';
+}
+function startCam(){
+  if(scanning){ stopCam(); return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ alert('Camera not available — use "Upload a photo" instead.'); return; }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false})
+  .then(function(s){
+    stream=s; scanning=true;
+    var v=$('#cam'); v.srcObject=s; v.play().catch(function(){});
+    $('#camWrap').classList.add('on');
+    $('#btnCam').textContent='Stop camera';
+    requestAnimationFrame(loop);
+  })
+  .catch(function(){ alert('Camera blocked — use "Upload a photo" instead.'); });
+}
+function loop(){
+  if(!scanning) return;
+  var now=Date.now();
+  if(now-lastDecode>140 && window.jsQR){
+    lastDecode=now;
+    var v=$('#cam');
+    if(v.readyState>=2){
+      var cw=Math.min(640,v.videoWidth||640);
+      var ch=Math.round(cw*(v.videoHeight||480)/(v.videoWidth||640));
+      var c=$('#cv'); c.width=cw; c.height=ch;
+      var ctx=c.getContext('2d',{willReadFrequently:true});
+      ctx.drawImage(v,0,0,cw,ch);
+      try{
+        var img=ctx.getImageData(0,0,cw,ch);
+        var code=jsQR(img.data,cw,ch,{inversionAttempts:'dontInvert'});
+        if(code&&code.data){ stopCam(); handlePayload(code.data); return; }
+      }catch(e){}
+    }
+  }
+  requestAnimationFrame(loop);
+}
+function photoDecode(file){
+  if(!window.jsQR){ alert('Still loading — try again in a moment.'); return; }
+  var img=new Image();
+  img.onload=function(){
+    var max=1280,w=img.width,h=img.height;
+    if(w>max){ h=Math.round(h*max/w); w=max; }
+    var c=$('#cv'); c.width=w; c.height=h;
+    var ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+    var d=ctx.getImageData(0,0,w,h);
+    var code=jsQR(d.data,w,h);
+    URL.revokeObjectURL(img.src);
+    if(code&&code.data) handlePayload(code.data);
+    else alert('No QR found in that photo — fill the frame with the code, good light.');
+  };
+  img.src=URL.createObjectURL(file);
+}
+
+$('#btnCam').onclick=startCam;
+$('#btnPhoto').onclick=function(){ $('#photoIn').click(); };
+$('#photoIn').onchange=function(){ if(this.files[0]) photoDecode(this.files[0]); this.value=''; };
+$('#btnCode').onclick=function(){ handlePayload($('#codeIn').value); };
+init();
+</script>
+</body>
+</html>

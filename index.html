@@ -12,10 +12,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+<script defer src="jsqr.js"></script>
+<script defer src="qrcode.min.js"></script>
+<script defer src="jspdf.umd.min.js"></script>
+<script defer src="jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{
   --board:#0B4F3F; --board-deep:#083A2F; --chalk:#FFFDF6;
@@ -207,6 +207,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <button class="btn soft" id="btnPick">Tap a name</button>
       <button class="btn soft fit" id="btnTorch" style="display:none">🔦</button>
     </div>
+    <button class="btn ghost" id="btnOnline">Online class check-in link…</button>
   </div>
   <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
   <p class="muted" style="margin-top:10px" id="scanHint">Scans save on this device instantly, even offline. Look at the student’s face — a screenshot of someone else’s code scans just as well.</p>
@@ -245,7 +246,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <details style="margin-top:10px">
         <summary>Bulk add (paste list)</summary>
         <div class="d-body">
-          <p>One student per line. Optional number before a comma: <kbd>12, Dela Cruz, Juan</kbd> or just <kbd>Dela Cruz, Juan</kbd>.</p>
+          <p>One student per line. Optional number before a comma, optional email at the end: <kbd>12, Dela Cruz, Juan</kbd> or <kbd>Dela Cruz, Juan, juan@gmail.com</kbd>.</p>
           <textarea id="bulkNames" rows="6" placeholder="Abad, Maria&#10;Bautista, Jose&#10;…"></textarea>
           <button class="btn sm" id="btnBulk" style="margin-top:8px">Add all</button>
         </div>
@@ -333,6 +334,8 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
         <li>Paste that URL and your token above — on <b>both</b> your phone and iPad — then tap Sync now.</li>
       </ol>
       <p><b>Treat the URL + token like a key.</b> Anyone who has both can read and write your attendance data. Don’t share them.</p>
+      <p><b>Updating the script later</b> (new version of Presente): open the Sheet → Extensions → Apps Script → replace the code → save → <b>Deploy → Manage deployments → pencil ✎ → Version: New version → Deploy</b>. The URL stays the same, so your devices keep working.</p>
+      <p><b>Email confirmations:</b> to email students/parents when they’re scanned, set <kbd>SEND_EMAILS = true</kbd> at the top of the script and add email addresses to students in the Roster tab (✎ edit). Sending happens when marks reach the Sheet, and Google caps it at ~100 recipients/day on a normal Gmail account (1,500/day on a Workspace/DepEd account).</p>
       <button class="btn sm" id="btnCopyGs">Copy script</button>
       <pre class="code" id="gsPre" style="margin-top:8px"></pre>
     </div>
@@ -350,6 +353,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
         <li><b>Offline:</b> everything saves locally first. Marks upload automatically when you’re back online (watch the dot in the header). If both devices edit the same student’s same day, the latest change wins.</li>
         <li><b>Don’t clear this browser’s data</b> — that deletes local records. Backups exist for a reason.</li>
         <li><b>Photo mode</b> exists for devices where live camera fails: it opens the camera app, you snap the QR, it decodes the photo.</li>
+        <li><b>Online classes:</b> Scan tab → “Online class check-in link…” → pick class and time limit → send the link. Students scan their own QR card on that page and get marked Present with the exact time; the link dies at the deadline. They can’t see anyone’s records — only submit their own code. Marks flow into your Sheet and devices like normal scans (“self check-in”).</li>
       </ul>
     </div>
   </details>
@@ -357,11 +361,13 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
   <details>
     <summary>Danger zone</summary>
     <div class="d-body">
-      <button class="btn danger sm" id="btnWipe">Erase everything on this device</button>
+      <button class="btn ghost sm" id="btnArchive">End school year — archive &amp; reset</button>
+      <p style="margin-top:8px">Downloads a full backup, then erases all attendance marks on THIS device and disconnects sync, so next year starts clean with a new Google Sheet. Do it on both devices. You can keep your classes.</p>
+      <button class="btn danger sm" id="btnWipe" style="margin-top:8px">Erase everything on this device</button>
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v1.0 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v3 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -388,12 +394,23 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 <canvas id="scanCanvas" style="display:none"></canvas>
 
 <script type="text/plain" id="gsCode">
-/** Presente sync backend — paste into Apps Script of a private Google Sheet. */
-/** 1) Change TOKEN below.  2) Deploy > New deployment > Web app,            */
-/**    Execute as: Me / Access: Anyone.  3) Put URL + token in the app.      */
+/** Presente sync backend v3 — paste into Apps Script of a private Google Sheet.  */
+/** FIRST TIME:  1) Change TOKEN below.  2) Deploy > New deployment > Web app,    */
+/**    Execute as: Me / Access: Anyone.  3) Put URL + token in the app.           */
+/** UPDATING an existing deployment: replace all code with this, save, then       */
+/**    Deploy > Manage deployments > pencil > Version: New version > Deploy.      */
+/**    The URL stays the same.                                                    */
+/** EMAILS: set SEND_EMAILS = true to email students when they are scanned.       */
+/**    Quota: ~100 recipients/day on gmail.com, 1500/day on Workspace accounts.   */
+/** ONLINE CHECK-IN: the app creates expiring sessions here; students hit the     */
+/**    'chk' endpoint with only a session key — never your TOKEN.                 */
 var TOKEN = 'change-me-please';
+var SEND_EMAILS = false;
+var EMAIL_FROM_NAME = 'Presente Attendance';
+var TZ = 'Asia/Manila';   // change only if you teach in another timezone
 
 var EV_HEAD = ['uid','ts','date','classId','studentId','name','status','via','time','device','srvTs'];
+var SESS_HEAD = ['key','classId','className','date','createdTs','expiresTs','marked'];
 
 function sheets_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -402,18 +419,69 @@ function sheets_() {
   var ro = ss.getSheetByName('Roster') || ss.insertSheet('Roster');
   var me = ss.getSheetByName('Meta') || ss.insertSheet('Meta');
   if (me.getLastRow() === 0) me.appendRow(['rosterTs', 0]);
-  return { ev: ev, ro: ro, me: me };
+  var se = ss.getSheetByName('Sessions') || ss.insertSheet('Sessions');
+  if (se.getLastRow() === 0) se.appendRow(SESS_HEAD);
+  return { ev: ev, ro: ro, me: me, se: se };
 }
 
 function json_(o) {
   return ContentService.createTextOutput(JSON.stringify(o))
     .setMimeType(ContentService.MimeType.JSON);
 }
+function word_(st) {
+  return st === 'P' ? 'Present' : st === 'L' ? 'Late' :
+         st === 'A' ? 'Absent' : st === 'E' ? 'Excused' : st;
+}
+function nowDate_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'); }
+function nowTime_() { return Utilities.formatDate(new Date(), TZ, 'h:mm:ss a'); }
+function key_() { return Utilities.getUuid().replace(/-/g, '').slice(0, 12); }
+
+function rosterMap_(s) {
+  var map = {};
+  var rl = s.ro.getLastRow();
+  if (rl > 0) {
+    var rows = s.ro.getRange(1, 1, rl, 6).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var sid = String(rows[i][2] || '');
+      if (sid) map[sid] = { clsId: String(rows[i][0] || ''), cls: String(rows[i][1] || ''),
+        name: String(rows[i][3] || ''), em: String(rows[i][5] || '') };
+    }
+  }
+  return map;
+}
+function className_(s, cid) {
+  var rl = s.ro.getLastRow();
+  if (rl > 0) {
+    var rows = s.ro.getRange(1, 1, rl, 2).getValues();
+    for (var i = 0; i < rows.length; i++) {
+      if (String(rows[i][0]) === cid) return String(rows[i][1] || '');
+    }
+  }
+  return '';
+}
+function findSession_(s, key) {
+  var last = s.se.getLastRow();
+  if (last < 2) return null;
+  var rows = s.se.getRange(2, 1, last - 1, SESS_HEAD.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === key) return { row: i + 2, v: rows[i] };
+  }
+  return null;
+}
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
+  var s;
+  if (p.chk) {                       /* public: session info for the check-in page */
+    s = sheets_();
+    var f = findSession_(s, String(p.chk));
+    if (!f) return json_({ ok: false, err: 'unknown' });
+    var exp = Number(f.v[5]);
+    return json_({ ok: true, cls: String(f.v[2] || ''), exp: exp,
+      now: Date.now(), open: Date.now() < exp });
+  }
   if (p.t !== TOKEN) return json_({ ok: false, err: 'bad token' });
-  var s = sheets_();
+  s = sheets_();
   var since = Number(p.since || 0);
   var clientRts = Number(p.rts || 0);
   var rosterTs = Number(s.me.getRange(1, 2).getValue() || 0);
@@ -432,20 +500,65 @@ function doGet(e) {
   }
   if (rosterTs > clientRts) {
     var rl = s.ro.getLastRow();
-    out.roster = rl > 0 ? s.ro.getRange(1, 1, rl, 5).getValues() : [];
+    out.roster = rl > 0 ? s.ro.getRange(1, 1, rl, 6).getValues() : [];
   }
   return json_(out);
+}
+
+function checkin_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var s = sheets_();
+    var f = findSession_(s, String(body.k || ''));
+    if (!f) return json_({ ok: false, err: 'unknown' });
+    if (Date.now() > Number(f.v[5])) return json_({ ok: false, err: 'expired' });
+    var sid = String(body.sid || '').trim();
+    var rmap = rosterMap_(s);
+    var info = rmap[sid];
+    if (!info) return json_({ ok: false, err: 'unknown' });
+    var marked = String(f.v[6] || '');
+    var hits = marked ? marked.split(',') : [];
+    for (var i = 0; i < hits.length; i++) {
+      var pair = hits[i].split('@');
+      if (pair[0] === sid) return json_({ ok: false, err: 'already', name: info.name, tm: pair[1] || '' });
+    }
+    var tm = nowTime_();
+    var uid = 'sf' + Date.now().toString(36) + key_().slice(0, 6);
+    s.ev.appendRow([uid, Date.now(), String(f.v[3] || nowDate_()), String(f.v[1]), sid,
+      info.name, 'P', 'self', tm, 'online', Date.now()]);
+    hits.push(sid + '@' + tm);
+    s.se.getRange(f.row, 7).setValue(hits.join(','));
+    return json_({ ok: true, name: info.name, cls: String(f.v[2] || ''), tm: tm });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function newSession_(body) {
+  var s = sheets_();
+  var cid = String(body.c || '');
+  if (!cid) return json_({ ok: false, err: 'no class' });
+  var mins = Math.max(5, Math.min(240, Number(body.mins) || 30));
+  var key = key_();
+  var now = Date.now();
+  var exp = now + mins * 60000;
+  s.se.appendRow([key, cid, className_(s, cid), nowDate_(), now, exp, '']);
+  return json_({ ok: true, key: key, exp: exp });
 }
 
 function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, err: 'bad json' }); }
+  if (body.op === 'chk') return checkin_(body);          /* student endpoint — no TOKEN */
   if (body.t !== TOKEN) return json_({ ok: false, err: 'bad token' });
+  if (body.op === 'newsession') return newSession_(body);
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     var s = sheets_();
-    var saved = 0;
+    var saved = 0, emailed = 0;
+    var newEvents = [];
     if (body.ev && body.ev.length) {
       var have = {};
       var last = s.ev.getLastRow();
@@ -460,6 +573,7 @@ function doPost(e) {
         if (have[v.u]) continue;
         add.push([v.u, v.ts, v.d, v.c, v.s, v.n, v.st, v.via, v.tm, v.dev || '', now]);
         have[v.u] = 1;
+        newEvents.push(v);
       }
       if (add.length) {
         s.ev.getRange(s.ev.getLastRow() + 1, 1, add.length, EV_HEAD.length).setValues(add);
@@ -469,10 +583,36 @@ function doPost(e) {
     if (body.roster && Number(body.roster.ts) > Number(s.me.getRange(1, 2).getValue() || 0)) {
       s.ro.clearContents();
       var rows = body.roster.rows || [];
-      if (rows.length) s.ro.getRange(1, 1, rows.length, 5).setValues(rows);
+      if (rows.length) s.ro.getRange(1, 1, rows.length, 6).setValues(rows);
       s.me.getRange(1, 2).setValue(Number(body.roster.ts));
     }
-    return json_({ ok: true, now: Date.now(), saved: saved });
+    if (SEND_EMAILS && newEvents.length) {
+      var quota = 0;
+      try { quota = MailApp.getRemainingDailyQuota(); } catch (qe) { quota = 0; }
+      if (quota > 0) {
+        var rmap = rosterMap_(s);
+        for (var k = 0; k < newEvents.length && quota > 0; k++) {
+          var ev2 = newEvents[k];
+          if (ev2.st !== 'P' && ev2.st !== 'L') continue;
+          if (ev2.via !== 'scan' && ev2.via !== 'tap') continue;
+          var info = rmap[String(ev2.s)];
+          if (!info || !info.em || info.em.indexOf('@') < 1) continue;
+          try {
+            MailApp.sendEmail({
+              to: info.em,
+              name: EMAIL_FROM_NAME,
+              subject: 'Attendance: ' + ev2.n + ' — ' + word_(ev2.st) + ' (' + ev2.d + ')',
+              body: 'Hi,\n\n' + ev2.n + ' was marked ' + word_(ev2.st) +
+                    (info.cls ? ' in ' + info.cls : '') +
+                    ' on ' + ev2.d + ' at ' + ev2.tm + '.\n\n' +
+                    'This is an automated confirmation from Presente. Please do not reply.'
+            });
+            emailed++; quota--;
+          } catch (mailErr) { quota = 0; }
+        }
+      }
+    }
+    return json_({ ok: true, now: Date.now(), saved: saved, emailed: emailed });
   } finally {
     lock.releaseLock();
   }
@@ -635,24 +775,63 @@ function renderClassDetail(){
   if(!cls.students.length){ list.innerHTML='<p class="muted">No students yet. Add them below or use bulk add.</p>'; }
   else{
     list.innerHTML=sortedStudents(cls).map(function(s){
+      var sub=[s.num?'#'+s.num:'',s.em||''].filter(Boolean).join(' · ');
       return '<div class="item"><div class="grow"><div class="nm">'+esc(s.name)+'</div>'+
-        (s.num?'<div class="sub">#'+esc(s.num)+'</div>':'')+'</div>'+
+        (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+
         '<button class="icon-btn" title="Show QR" data-qr="'+esc(s.id)+'">▣</button>'+
+        '<button class="icon-btn" title="Move to another class" data-mv="'+esc(s.id)+'">⇄</button>'+
         '<button class="icon-btn" title="Edit" data-ed="'+esc(s.id)+'">✎</button>'+
         '<button class="icon-btn" title="Remove" data-rm="'+esc(s.id)+'">✕</button></div>';
     }).join('');
     $$('#studentList [data-ed]').forEach(function(b){ b.onclick=function(){ editStudent(cls, b.getAttribute('data-ed')); }; });
+    $$('#studentList [data-mv]').forEach(function(b){ b.onclick=function(){ openMove(cls, b.getAttribute('data-mv')); }; });
     $$('#studentList [data-rm]').forEach(function(b){ b.onclick=function(){ removeStudent(cls, b.getAttribute('data-rm')); }; });
     $$('#studentList [data-qr]').forEach(function(b){ b.onclick=function(){ showOneQR(cls, b.getAttribute('data-qr')); }; });
   }
 }
 function findStu(cls,id){ for(var i=0;i<cls.students.length;i++) if(cls.students[i].id===id) return cls.students[i]; return null; }
+function findStudentGlobal(sid){
+  for(var i=0;i<state.classes.length;i++){
+    var st=findStu(state.classes[i],sid);
+    if(st) return {cls:state.classes[i],stu:st};
+  }
+  return null;
+}
 function editStudent(cls,id){
   var s=findStu(cls,id); if(!s) return;
   var name=prompt('Student name:',s.name); if(name===null) return;
   var num=prompt('Number (optional):',s.num||''); if(num===null) num=s.num||'';
+  var em=prompt('Email for scan confirmations (optional):',s.em||''); if(em===null) em=s.em||'';
   name=name.trim(); if(!name) return;
-  s.name=name; s.num=num.trim(); touchRoster(); renderClassDetail(); renderSelects();
+  s.name=name; s.num=num.trim(); s.em=em.trim();
+  touchRoster(); renderClassDetail(); renderSelects();
+}
+function openMove(cls,id){
+  var s=findStu(cls,id); if(!s) return;
+  var others=state.classes.filter(function(c){ return c.id!==cls.id; });
+  if(!others.length){ toast('Add another class first, then you can move students into it'); return; }
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">Move '+esc(s.name)+'</h2>'+
+    '<p class="muted">From '+esc(cls.name)+' to:</p><div class="list"></div>'+
+    '<button class="btn soft">Cancel</button></div>';
+  document.body.appendChild(wrap);
+  wrap.querySelector('.list').innerHTML=others.map(function(c){
+    return '<div class="item"><div class="grow"><div class="nm">'+esc(c.name)+'</div></div>'+
+      '<button class="btn soft sm" data-to="'+esc(c.id)+'">Move here</button></div>';
+  }).join('');
+  Array.prototype.slice.call(wrap.querySelectorAll('[data-to]')).forEach(function(b){
+    b.onclick=function(){
+      var to=getClass(b.getAttribute('data-to')); if(!to) return;
+      cls.students=cls.students.filter(function(x){ return x.id!==s.id; });
+      to.students.push(s);
+      touchRoster(); wrap.remove();
+      renderClassDetail(); renderSelects();
+      toast(s.name+' moved to '+to.name+'. Their printed QR card still works.');
+    };
+  });
+  wrap.querySelector('.btn.soft').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
 }
 function removeStudent(cls,id){
   var s=findStu(cls,id); if(!s) return;
@@ -678,10 +857,15 @@ function bulkAdd(){
   var lines=$('#bulkNames').value.split('\n'), added=0;
   lines.forEach(function(line){
     line=line.trim(); if(!line) return;
-    var num='', name=line;
+    var num='', name=line, em='';
     var m=line.match(/^(\d{1,4})\s*[,;.\-]\s*(.+)$/);
     if(m){ num=m[1]; name=m[2].trim(); }
-    if(name){ cls.students.push({id:uid(),name:name,num:num}); added++; }
+    var pieces=name.split(',');
+    if(pieces.length>1){
+      var lastTok=pieces[pieces.length-1].trim();
+      if(lastTok.indexOf('@')>0){ em=lastTok; name=pieces.slice(0,-1).join(',').trim(); }
+    }
+    if(name){ cls.students.push({id:uid(),name:name,num:num,em:em}); added++; }
   });
   $('#bulkNames').value='';
   touchRoster(); renderClassDetail(); toast('Added '+added+' student'+(added===1?'':'s'));
@@ -761,9 +945,9 @@ function handleScan(text){
   lastPayload=text; lastPayloadAt=now;
   var parts=text.split('|');
   if(parts.length!==3||parts[0]!=='P1'){ stampShow('err','NOT A PRESENTE CODE','Unknown QR',''); beep('err'); return; }
-  var cls=getClass(parts[1]);
-  var stu=cls?findStu(cls,parts[2]):null;
-  if(!cls||!stu){ stampShow('err','UNKNOWN','Student not in roster','Was the class or student deleted?'); beep('err'); return; }
+  var hit=findStudentGlobal(parts[2]);
+  if(!hit){ stampShow('err','UNKNOWN','Student not in roster','Was this student removed?'); beep('err'); return; }
+  var cls=hit.cls, stu=hit.stu;
   var prev=marksFor(cls.id,curScanDate())[stu.id];
   if(prev&&prev.st){
     stampShow('dup','ALREADY '+wordFor(prev.st).toUpperCase(),stu.name,cls.name+' · first scan '+(prev.ts?fmtTs(prev.ts):(prev.tm||'')));
@@ -852,7 +1036,7 @@ function renderRecords(){
   listEl.innerHTML=sortedStudents(cls).map(function(s){
     var mk=m[s.id], st=mk&&mk.st?mk.st:'';
     if(st) stats[st]++; else stats.U++;
-    var sub=st?( (mk.via==='scan'?'scanned':mk.via==='tap'?'tapped':'auto')+' · '+(mk.ts?fmtTs(mk.ts):(mk.tm||'')) ):'';
+    var sub=st?( (mk.via==='scan'?'scanned':mk.via==='tap'?'tapped':mk.via==='self'?'self check-in':'auto')+' · '+(mk.ts?fmtTs(mk.ts):(mk.tm||'')) ):'';
     return '<div class="item"><div class="grow"><div class="nm">'+esc(s.name)+'</div>'+
       (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+
       '<button class="chip '+st+'" data-cyc="'+esc(s.id)+'">'+(st?wordFor(st):'—')+'</button></div>';
@@ -956,11 +1140,89 @@ window.addEventListener('afterprint',function(){
   $('#printArea').innerHTML='';
 });
 
+/* ============ online check-in sessions ============ */
+function openOnline(){
+  var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
+  if(!url){ toast('Set up sync first — the online link works through your Google Sheet'); return; }
+  if(!state.classes.length){ toast('Add a class first'); return; }
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">Online check-in link</h2>'+
+    '<p class="muted">Students open the link and scan their own QR card to be marked Present. The link dies when time runs out.</p>'+
+    '<div><label>Class</label><select id="olClass"></select></div>'+
+    '<div><label>Link works for</label><div class="seg" id="olDur">'+
+      '<button data-m="15">15 min</button><button data-m="30" class="on" style="background:var(--board);color:var(--chalk)">30 min</button>'+
+      '<button data-m="60">1 hr</button><button data-m="180">3 hrs</button></div></div>'+
+    '<button class="btn" id="olMake">Create link</button>'+
+    '<div id="olOut" style="display:none"><label>Send this to your students</label>'+
+      '<textarea id="olLink" rows="4" readonly style="font-family:var(--mono);font-size:12px"></textarea>'+
+      '<div class="row" style="margin-top:8px"><button class="btn" id="olCopy">Copy link</button><button class="btn soft" id="olShare">Share…</button></div>'+
+      '<p class="muted" id="olExp" style="margin-top:8px"></p></div>'+
+    '<button class="btn soft" id="olClose">Close</button></div>';
+  document.body.appendChild(wrap);
+  var sel=wrap.querySelector('#olClass');
+  sel.innerHTML=state.classes.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
+  if(getClass($('#scanClass').value)) sel.value=$('#scanClass').value;
+  var mins=30;
+  var durBtns=Array.prototype.slice.call(wrap.querySelectorAll('#olDur button'));
+  durBtns.forEach(function(b){
+    b.onclick=function(){
+      mins=Number(b.getAttribute('data-m'));
+      durBtns.forEach(function(x){ x.classList.remove('on'); x.style.background=''; x.style.color=''; });
+      b.classList.add('on'); b.style.background='var(--board)'; b.style.color='var(--chalk)';
+    };
+  });
+  var madeLink='';
+  wrap.querySelector('#olMake').onclick=function(){
+    var btn=this; btn.disabled=true; btn.textContent='Creating…';
+    fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'newsession',c:sel.value,mins:mins})})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(!j.ok) throw new Error(j.err||'server said no');
+      var base=location.href.replace(/[?#].*$/,'').replace(/[^\/]*$/,'');
+      madeLink=base+'checkin.html?k='+encodeURIComponent(j.key)+'&s='+encodeURIComponent(url);
+      wrap.querySelector('#olLink').value=madeLink;
+      wrap.querySelector('#olOut').style.display='block';
+      wrap.querySelector('#olExp').textContent='Expires at '+fmtTs(Number(j.exp))+'. Latecomers after that need you, not the link.';
+      btn.style.display='none';
+    })
+    .catch(function(err){
+      btn.disabled=false; btn.textContent='Create link';
+      toast('Could not create the link: '+err.message);
+    });
+  };
+  wrap.querySelector('#olCopy').onclick=function(){
+    if(!madeLink) return;
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(madeLink).then(function(){ toast('Link copied'); },function(){ fallbackCopy(madeLink); });
+    } else fallbackCopy(madeLink);
+  };
+  wrap.querySelector('#olShare').onclick=function(){
+    if(!madeLink) return;
+    if(navigator.share){ navigator.share({title:'Attendance check-in',text:'Mark your attendance here:',url:madeLink}).catch(function(){}); }
+    else { fallbackCopy(madeLink); }
+  };
+  wrap.querySelector('#olClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+}
+
 /* ============ exports ============ */
 function expRange(){
   var f=$('#expFrom').value, t=$('#expTo').value;
   if(!f||!t||f>t){ toast('Pick a valid From / To range'); return null; }
   return [f,t];
+}
+function studentsForExport(clsId,from,to){
+  var cls=getClass(clsId); if(!cls) return [];
+  var seen={}, list=[];
+  sortedStudents(cls).forEach(function(s){ seen[s.id]=1; list.push({id:s.id,name:s.name,num:s.num||'',gone:false}); });
+  for(var i=0;i<state.ev.length;i++){
+    var e=state.ev[i];
+    if(e.c!==clsId||!e.st||e.d<from||e.d>to||seen[e.s]) continue;
+    seen[e.s]=1; list.push({id:e.s,name:e.n||'(removed)',num:'',gone:true});
+  }
+  list.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  return list;
 }
 function buildRegister(clsId,from,to){
   var cls=getClass(clsId); if(!cls) return null;
@@ -971,14 +1233,14 @@ function buildRegister(clsId,from,to){
     for(var k in m){ if(m[k].st){ any=true; break; } }
     if(any){ dates.push(d); perDate[d]=m; }
   });
-  var rows=sortedStudents(cls).map(function(s,i){
+  var rows=studentsForExport(clsId,from,to).map(function(s,i){
     var tot={P:0,L:0,A:0,E:0};
     var cells=dates.map(function(d){
       var st=(perDate[d][s.id]||{}).st||'';
       if(st) tot[st]++;
       return st;
     });
-    return {i:i+1,num:s.num||'',name:s.name,cells:cells,tot:tot};
+    return {i:i+1,num:s.num||'',name:s.name+(s.gone?' *':''),cells:cells,tot:tot};
   });
   return {cls:cls,dates:dates,rows:rows};
 }
@@ -987,12 +1249,13 @@ function exportCSV(){
   var r=expRange(); if(!r) return;
   var cls=getClass($('#expClass').value); if(!cls){ toast('Pick a class'); return; }
   var lines=['Date,Class,No,Name,Status,Time,Via'];
+  var studs=studentsForExport(cls.id,r[0],r[1]);
   dateRange(r[0],r[1]).forEach(function(d){
     var m=marksFor(cls.id,d);
-    sortedStudents(cls).forEach(function(s){
+    studs.forEach(function(s){
       var mk=m[s.id];
       if(mk&&mk.st){
-        lines.push([d,cls.name,s.num||'',s.name,wordFor(mk.st),(mk.ts?fmtTs(mk.ts):(mk.tm||'')),mk.via||''].map(function(v){
+        lines.push([d,cls.name,s.num,s.name,wordFor(mk.st),(mk.ts?fmtTs(mk.ts):(mk.tm||'')),mk.via||''].map(function(v){
           v=String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;
         }).join(','));
       }
@@ -1066,19 +1329,20 @@ function exportDOC(){
     'th,td{border:1px solid #666;padding:2px 4px;text-align:center}td.nm,th.nm{text-align:left}'+
     '.reg-title{font-size:13pt;font-weight:bold;margin-bottom:6pt}'+
     '</style></head><body>'+registerTableHTML(reg,r)+
-    '<p style="font-size:8pt;color:#666">P = Present · L = Late · A = Absent · E = Excused · Generated by Presente</p>'+
+    '<p style="font-size:8pt;color:#666">P = Present · L = Late · A = Absent · E = Excused · * = removed from roster mid-year · Generated by Presente</p>'+
     '</body></html>';
   dl('register-'+reg.cls.name.replace(/[^\w\-]+/g,'_')+'-'+r[0]+'_'+r[1]+'.doc','application/msword',body);
 }
 
 /* ============ time log ============ */
-function wordVia(v){ return v==='scan'?'QR scan':v==='tap'?'tapped':'auto'; }
+function wordVia(v){ return v==='scan'?'QR scan':v==='tap'?'tapped':v==='self'?'self check-in':'auto'; }
 function buildLog(clsId,from,to){
   var cls=getClass(clsId); if(!cls) return null;
   var entries=[];
+  var studs=studentsForExport(clsId,from,to);
   dateRange(from,to).forEach(function(d){
     var m=marksFor(clsId,d);
-    sortedStudents(cls).forEach(function(s){
+    studs.forEach(function(s){
       var mk=m[s.id];
       if(mk&&mk.st) entries.push({d:d,ts:mk.ts||0,tm:mk.ts?fmtTs(mk.ts):(mk.tm||''),
         num:s.num||'',name:s.name,st:mk.st,via:mk.via||''});
@@ -1143,6 +1407,24 @@ function printLogFallback(log,r){
 function doBackup(){
   dl('presente-backup-'+todayStr()+'.json','application/json',JSON.stringify(state,null,1));
 }
+function archiveYear(){
+  if(!confirm('End of school year?\n\nThis will:\n1) download a full backup file\n2) erase ALL attendance marks on THIS device\n3) disconnect sync\n\nDownload your final CSVs and registers from the Export tab FIRST if you have not.')) return;
+  doBackup();
+  setTimeout(function(){
+    var keep=confirm('Keep your classes and student lists for next year?\n\nOK = keep them\nCancel = erase them too');
+    if(!confirm('Last check: did the backup file download? This cannot be undone on this device.')) return;
+    state.ev=[];
+    state.lastServerTs=0;
+    state.settings.url='';
+    state.settings.token='';
+    if(!keep){ state.classes=[]; detailClassId=null; }
+    state.rosterTs=Date.now();
+    state.rosterDirty=true;
+    save(); afterStateChange(); refreshDot();
+    if($('#panel-roster').classList.contains('active')) renderRoster();
+    toast('Year archived. Make a NEW Google Sheet for the new year, then reconnect sync.');
+  },500);
+}
 function doRestore(file){
   var rd=new FileReader();
   rd.onload=function(){
@@ -1177,8 +1459,8 @@ function refreshDot(txt,cls){
 function rosterRows(){
   var rows=[];
   state.classes.forEach(function(c){
-    if(!c.students.length) rows.push([c.id,c.name,'','','']);
-    c.students.forEach(function(s){ rows.push([c.id,c.name,s.id,s.name,s.num||'']); });
+    if(!c.students.length) rows.push([c.id,c.name,'','','','']);
+    c.students.forEach(function(s){ rows.push([c.id,c.name,s.id,s.name,s.num||'',s.em||'']); });
   });
   return rows;
 }
@@ -1189,7 +1471,7 @@ function rebuildRoster(rows){
     if(!map[cid]){ map[cid]={id:cid,name:String(r[1]||'Class'),students:[]}; order.push(cid); }
     else map[cid].name=String(r[1]||map[cid].name);
     var sid=String(r[2]||'');
-    if(sid) map[cid].students.push({id:sid,name:String(r[3]||''),num:String(r[4]||'')});
+    if(sid) map[cid].students.push({id:sid,name:String(r[3]||''),num:String(r[4]||''),em:String(r[5]||'')});
   });
   state.classes=order.map(function(id){ return map[id]; });
 }
@@ -1267,6 +1549,7 @@ function init(){
   $('#btnPhoto').onclick=function(){ $('#photoIn').click(); };
   $('#photoIn').onchange=function(){ if(this.files[0]) photoDecode(this.files[0]); this.value=''; };
   $('#btnPick').onclick=openPick;
+  $('#btnOnline').onclick=openOnline;
   $('#pickClose').onclick=function(){ $('#pickModal').classList.remove('show'); };
   $('#pickModal').onclick=function(e){ if(e.target===this) this.classList.remove('show'); };
   $('#pickSearch').oninput=renderPick;
@@ -1321,6 +1604,7 @@ function init(){
       navigator.clipboard.writeText(txt).then(function(){ toast('Script copied'); },function(){ fallbackCopy(txt); });
     } else fallbackCopy(txt);
   };
+  $('#btnArchive').onclick=archiveYear;
   $('#btnWipe').onclick=function(){
     if(!confirm('Erase ALL Presente data on this device?')) return;
     if(!confirm('Really sure? This cannot be undone on this device.')) return;
