@@ -6,6 +6,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0B4F3F">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Presente — Attendance</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1339,6 +1341,9 @@ function fallbackCopy(txt){
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
 else init();
+if('serviceWorker' in navigator){
+  try{ navigator.serviceWorker.register('sw.js').catch(function(){}); }catch(e){}
+}
 </script>
 </body>
 </html>
