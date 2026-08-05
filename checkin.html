@@ -64,7 +64,7 @@ input{font-family:var(--mono);font-size:15px;border:1.5px solid var(--line);bord
     <div class="stack">
       <button class="btn" id="btnCam">Scan my QR card</button>
       <div id="camWrap"><video id="cam" playsinline muted></video><div id="aim"><span></span></div></div>
-      <button class="btn soft" id="btnFlip" style="display:none">Switch camera (front/back)</button>
+      <button class="btn soft" id="btnFlip">Switch camera (front/back)</button>
       <button class="btn soft" id="btnPhoto">Upload a photo of my QR</button>
       <input type="file" id="photoIn" accept="image/*" capture="environment" class="hidden">
       <details style="border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:var(--card)">
@@ -173,7 +173,6 @@ function stopCam(){
   $('#cam').style.transform='';
   $('#camWrap').classList.remove('on');
   $('#btnCam').textContent='Scan my QR card';
-  $('#btnFlip').style.display='none';
 }
 function startCam(){
   if(scanning){ stopCam(); return; }
@@ -184,7 +183,6 @@ function startCam(){
     var v=$('#cam'); v.srcObject=s; v.play().catch(function(){});
     $('#camWrap').classList.add('on');
     $('#btnCam').textContent='Stop camera';
-    $('#btnFlip').style.display='flex';
     v.style.transform = facing==='user' ? 'scaleX(-1)' : '';
     requestAnimationFrame(loop);
   })

@@ -178,7 +178,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance</span>
+  <span class="brand-sub">attendance · v3.3</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -206,7 +206,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <button class="btn soft" id="btnPhoto">Photo mode</button>
       <button class="btn soft" id="btnPick">Tap a name</button>
       <button class="btn soft fit" id="btnTorch" style="display:none">🔦</button>
-      <button class="btn soft fit" id="btnFlip" style="display:none">⇆ Flip</button>
+      <button class="btn soft fit" id="btnFlip">⇆ Front/back</button>
     </div>
     <button class="btn ghost" id="btnOnline">Online class check-in link…</button>
   </div>
@@ -380,7 +380,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v3.2 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v3.3 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -905,7 +905,6 @@ function startCamera(){
     $('#btnCam').textContent='Stop camera';
     $('#camIdle').style.display='none';
     $('#aim').classList.add('on');
-    $('#btnFlip').style.display='flex';
     v.style.transform = camFacing==='user' ? 'scaleX(-1)' : '';
     var track=s.getVideoTracks()[0];
     try{
@@ -926,14 +925,13 @@ function stopCamera(){
   var i=$('#camIdle'); if(i) i.style.display='flex';
   var a=$('#aim'); if(a) a.classList.remove('on');
   var t=$('#btnTorch'); if(t) t.style.display='none';
-  var f=$('#btnFlip'); if(f) f.style.display='none';
   if(v) v.style.transform='';
 }
 function flipCamera(){
   camFacing = camFacing==='environment' ? 'user' : 'environment';
   state.settings.camFacing=camFacing; save();
-  stopCamera();
-  setTimeout(startCamera,150);
+  if(scanning){ stopCamera(); setTimeout(startCamera,150); }
+  else{ toast(camFacing==='user' ? 'Will use the FRONT camera' : 'Will use the BACK camera'); }
 }
 function toggleTorch(){
   if(!stream) return;
