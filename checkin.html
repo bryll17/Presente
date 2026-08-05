@@ -64,6 +64,7 @@ input{font-family:var(--mono);font-size:15px;border:1.5px solid var(--line);bord
     <div class="stack">
       <button class="btn" id="btnCam">Scan my QR card</button>
       <div id="camWrap"><video id="cam" playsinline muted></video><div id="aim"><span></span></div></div>
+      <button class="btn soft" id="btnFlip" style="display:none">Switch camera (front/back)</button>
       <button class="btn soft" id="btnPhoto">Upload a photo of my QR</button>
       <input type="file" id="photoIn" accept="image/*" capture="environment" class="hidden">
       <details style="border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:var(--card)">
@@ -88,7 +89,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 var qs=new URLSearchParams(location.search);
 var KEY=(qs.get('k')||'').trim();
 var SURL=(qs.get('s')||'').trim();
-var clockOffset=0, expiresTs=0, done=false, scanning=false, stream=null, lastDecode=0;
+var clockOffset=0, expiresTs=0, done=false, scanning=false, stream=null, lastDecode=0, facing='environment';
 
 function fmtT(ts){var d=new Date(ts);var h=d.getHours(),m=('0'+d.getMinutes()).slice(-2),s=('0'+d.getSeconds()).slice(-2);
   var ap=h>=12?'PM':'AM';h=h%12;if(h===0)h=12;return h+':'+m+':'+s+' '+ap;}
@@ -169,18 +170,22 @@ function stopCam(){
   scanning=false;
   if(stream){ stream.getTracks().forEach(function(t){t.stop();}); stream=null; }
   $('#cam').srcObject=null;
+  $('#cam').style.transform='';
   $('#camWrap').classList.remove('on');
   $('#btnCam').textContent='Scan my QR card';
+  $('#btnFlip').style.display='none';
 }
 function startCam(){
   if(scanning){ stopCam(); return; }
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ alert('Camera not available — use "Upload a photo" instead.'); return; }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false})
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing},width:{ideal:1280}},audio:false})
   .then(function(s){
     stream=s; scanning=true;
     var v=$('#cam'); v.srcObject=s; v.play().catch(function(){});
     $('#camWrap').classList.add('on');
     $('#btnCam').textContent='Stop camera';
+    $('#btnFlip').style.display='flex';
+    v.style.transform = facing==='user' ? 'scaleX(-1)' : '';
     requestAnimationFrame(loop);
   })
   .catch(function(){ alert('Camera blocked — use "Upload a photo" instead.'); });
@@ -224,6 +229,7 @@ function photoDecode(file){
 }
 
 $('#btnCam').onclick=startCam;
+$('#btnFlip').onclick=function(){ facing=(facing==='environment')?'user':'environment'; stopCam(); setTimeout(startCam,150); };
 $('#btnPhoto').onclick=function(){ $('#photoIn').click(); };
 $('#photoIn').onchange=function(){ if(this.files[0]) photoDecode(this.files[0]); this.value=''; };
 $('#btnCode').onclick=function(){ handlePayload($('#codeIn').value); };

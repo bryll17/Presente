@@ -206,6 +206,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <button class="btn soft" id="btnPhoto">Photo mode</button>
       <button class="btn soft" id="btnPick">Tap a name</button>
       <button class="btn soft fit" id="btnTorch" style="display:none">🔦</button>
+      <button class="btn soft fit" id="btnFlip" style="display:none">⇆ Flip</button>
     </div>
     <button class="btn ghost" id="btnOnline">Online class check-in link…</button>
   </div>
@@ -320,7 +321,19 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
         <button class="btn ghost" id="btnSyncNow">Sync now</button>
       </div>
       <p class="muted" id="syncStatus">Sync is off. This device works fine standalone; sync only matters if you use two devices.</p>
+      <button class="btn soft sm" id="btnRepush">Re-send everything to the Sheet</button>
+      <p class="muted">Recovery tool: after restoring a backup or connecting a brand-new Sheet, this re-uploads every mark and the whole roster from this device. Safe to press — duplicates are ignored.</p>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Auto-backup to this computer</h2>
+    <p class="muted">Works in Chrome or Edge on a computer. Pick a folder once; every time the app is open here, it silently saves a dated backup file plus a plain CSV of all marks into that folder — your own copy even if Google and GitHub both vanished. Runs only while the app is open on this computer.</p>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost" id="btnPickDir">Choose backup folder</button>
+      <button class="btn soft" id="btnBakNow">Back up now</button>
+    </div>
+    <p class="muted" id="bakStatus" style="margin-top:8px">Not set up on this device.</p>
   </div>
 
   <details>
@@ -367,7 +380,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v3 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v3.2 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -872,7 +885,7 @@ function bulkAdd(){
 }
 
 /* ============ scanner ============ */
-var stream=null, scanning=false, lastPayload='', lastPayloadAt=0, lastDecodeAt=0, curStatus='P', torchOn=false;
+var stream=null, scanning=false, lastPayload='', lastPayloadAt=0, lastDecodeAt=0, curStatus='P', torchOn=false, camFacing='environment';
 function setStatusToggle(st){
   curStatus=st;
   $('#stPresent').classList.toggle('on',st==='P');
@@ -883,7 +896,7 @@ function startCamera(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
     toast('Live camera not available here — use Photo mode'); return;
   }
-  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false})
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:camFacing},width:{ideal:1280}},audio:false})
   .then(function(s){
     stream=s;
     var v=$('#cam'); v.srcObject=s;
@@ -892,6 +905,8 @@ function startCamera(){
     $('#btnCam').textContent='Stop camera';
     $('#camIdle').style.display='none';
     $('#aim').classList.add('on');
+    $('#btnFlip').style.display='flex';
+    v.style.transform = camFacing==='user' ? 'scaleX(-1)' : '';
     var track=s.getVideoTracks()[0];
     try{
       var caps=track.getCapabilities?track.getCapabilities():{};
@@ -911,6 +926,14 @@ function stopCamera(){
   var i=$('#camIdle'); if(i) i.style.display='flex';
   var a=$('#aim'); if(a) a.classList.remove('on');
   var t=$('#btnTorch'); if(t) t.style.display='none';
+  var f=$('#btnFlip'); if(f) f.style.display='none';
+  if(v) v.style.transform='';
+}
+function flipCamera(){
+  camFacing = camFacing==='environment' ? 'user' : 'environment';
+  state.settings.camFacing=camFacing; save();
+  stopCamera();
+  setTimeout(startCamera,150);
 }
 function toggleTorch(){
   if(!stream) return;
@@ -1514,6 +1537,8 @@ function syncNow(auto){
     refreshDot('synced '+nowTime(),'ok');
     $('#syncStatus').textContent='Last sync: '+nowTime()+(got?' · pulled '+got+' new marks':'')+'.';
     afterStateChange();
+    doAutoBackup(false);
+    if(pending()>0){ refreshDot(); setTimeout(function(){ syncNow(true); },1200); }
   })
   .catch(function(err){
     syncBusy=false;
@@ -1528,6 +1553,91 @@ function afterStateChange(){
   if($('#panel-roster').classList.contains('active')) renderRoster();
   $('#syncUrl').value=state.settings.url||'';
   $('#syncToken').value=state.settings.token||'';
+}
+
+/* ============ auto-backup to a computer folder ============ */
+var dirHandle=null;
+var FS_OK=('showDirectoryPicker' in window);
+function csvEsc(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function idb(){ return new Promise(function(res,rej){
+  var r=indexedDB.open('presente-fs',1);
+  r.onupgradeneeded=function(){ r.result.createObjectStore('handles'); };
+  r.onsuccess=function(){ res(r.result); };
+  r.onerror=function(){ rej(r.error); };
+});}
+function idbSet(k,v){ return idb().then(function(db){ return new Promise(function(res,rej){
+  var tx=db.transaction('handles','readwrite'); tx.objectStore('handles').put(v,k);
+  tx.oncomplete=function(){ res(); }; tx.onerror=function(){ rej(tx.error); };
+});});}
+function idbGet(k){ return idb().then(function(db){ return new Promise(function(res,rej){
+  var tx=db.transaction('handles','readonly'); var q=tx.objectStore('handles').get(k);
+  q.onsuccess=function(){ res(q.result); }; q.onerror=function(){ rej(q.error); };
+});});}
+function allMarksCSV(){
+  var latest={};
+  state.ev.forEach(function(e){
+    var k=e.d+'|'+e.c+'|'+e.s;
+    if(!latest[k]||e.ts>=latest[k].ts) latest[k]=e;
+  });
+  var rows=Object.keys(latest).map(function(k){ return latest[k]; })
+    .filter(function(e){ return e.st; })
+    .sort(function(a,b){ return a.d<b.d?-1:a.d>b.d?1:a.ts-b.ts; });
+  var lines=['Date,Class,No,Name,Status,Time,Via'];
+  rows.forEach(function(e){
+    var cls=getClass(e.c);
+    var hit=findStudentGlobal(e.s);
+    lines.push([e.d,cls?cls.name:'(archived class)',(hit?hit.stu.num||'':''),e.n,
+      wordFor(e.st),(e.ts?fmtTs(e.ts):(e.tm||'')),e.via||''].map(csvEsc).join(','));
+  });
+  return '\ufeff'+lines.join('\r\n');
+}
+function bakStatus(msg){ var el=$('#bakStatus'); if(el) el.textContent=msg; }
+async function writeBackupFiles(){
+  var fh=await dirHandle.getFileHandle('presente-backup-'+todayStr()+'.json',{create:true});
+  var w=await fh.createWritable(); await w.write(JSON.stringify(state,null,1)); await w.close();
+  var fh2=await dirHandle.getFileHandle('presente-all-marks.csv',{create:true});
+  var w2=await fh2.createWritable(); await w2.write(allMarksCSV()); await w2.close();
+}
+function doAutoBackup(force){
+  if(!FS_OK||!dirHandle) return;
+  if(!force && state.settings.lastBak && Date.now()-state.settings.lastBak<15*60000) return;
+  dirHandle.queryPermission({mode:'readwrite'}).then(function(p){
+    if(p!=='granted'){
+      if(!force){ bakStatus('Backup folder needs permission — press "Back up now" once.'); return null; }
+      return dirHandle.requestPermission({mode:'readwrite'});
+    }
+    return 'granted';
+  }).then(function(p){
+    if(p!=='granted') return;
+    return writeBackupFiles().then(function(){
+      state.settings.lastBak=Date.now(); save();
+      bakStatus('Last saved to "'+(dirHandle.name||'folder')+'" at '+nowTime()+'.');
+    });
+  }).catch(function(err){
+    bakStatus('Backup failed: '+err.message+' — press "Back up now" or re-choose the folder.');
+  });
+}
+function initAutoBackup(){
+  if(!FS_OK){
+    bakStatus('Not available in this browser. Open the app in Chrome or Edge on a computer to use this.');
+    var b1=$('#btnPickDir'), b2=$('#btnBakNow');
+    if(b1) b1.disabled=true; if(b2) b2.disabled=true;
+    return;
+  }
+  idbGet('dir').then(function(hnd){
+    if(hnd){ dirHandle=hnd; bakStatus('Folder connected: "'+(hnd.name||'folder')+'". Backing up shortly…');
+      setTimeout(function(){ doAutoBackup(false); },2500); }
+  }).catch(function(){});
+  $('#btnPickDir').onclick=function(){
+    window.showDirectoryPicker({id:'presente-bak',mode:'readwrite'}).then(function(hnd){
+      dirHandle=hnd;
+      return idbSet('dir',hnd).then(function(){ doAutoBackup(true); });
+    }).catch(function(){});
+  };
+  $('#btnBakNow').onclick=function(){
+    if(!dirHandle){ toast('Choose a backup folder first'); return; }
+    doAutoBackup(true);
+  };
 }
 
 /* ============ wiring ============ */
@@ -1546,6 +1656,7 @@ function init(){
   $('#stLate').onclick=function(){ setStatusToggle('L'); };
   $('#btnCam').onclick=function(){ scanning?stopCamera():startCamera(); };
   $('#btnTorch').onclick=toggleTorch;
+  $('#btnFlip').onclick=flipCamera;
   $('#btnPhoto').onclick=function(){ $('#photoIn').click(); };
   $('#photoIn').onchange=function(){ if(this.files[0]) photoDecode(this.files[0]); this.value=''; };
   $('#btnPick').onclick=openPick;
@@ -1598,6 +1709,15 @@ function init(){
     if(state.settings.url) syncNow(false);
   };
   $('#btnSyncNow').onclick=function(){ syncNow(false); };
+  $('#btnRepush').onclick=function(){
+    if(!(state.settings.url||'').trim()){ toast('Connect sync first (URL + token above)'); return; }
+    if(!confirm('Re-send ALL attendance marks and the whole roster from THIS device to the connected Sheet?\n\nUse this after restoring a backup, or after connecting a new/empty Sheet. Duplicates are ignored, so this is safe.')) return;
+    state.ev.forEach(function(e){ e.sy=0; });
+    state.rosterTs=Date.now(); state.rosterDirty=true;
+    state.lastServerTs=0;
+    save(); syncNow(false);
+    toast('Re-sending — watch the header dot until it turns green');
+  };
   $('#btnCopyGs').onclick=function(){
     var txt=$('#gsCode').textContent.trim();
     if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -1613,6 +1733,8 @@ function init(){
     detailClassId=null; afterStateChange(); renderRoster(); toast('Wiped');
   };
 
+  camFacing=state.settings.camFacing||'environment';
+  initAutoBackup();
   document.addEventListener('visibilitychange',function(){ if(document.hidden) stopCamera(); });
   window.addEventListener('online',function(){ requestSync(); });
   setTimeout(function(){ if((state.settings.url||'').trim()) syncNow(true); },900);

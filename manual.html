@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Presente — Owner's Manual &amp; Recovery Guide</title>
+<style>
+:root{--board:#0B4F3F;--chalk:#FFFDF6;--paper:#F4F5F1;--card:#FFF;--ink:#1B2420;--soft:#5A665F;--line:#DDE2DB;--warn:#7A2E28;
+--mono:ui-monospace,'Courier New',monospace;--body:system-ui,-apple-system,'Segoe UI',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--body);background:var(--paper);color:var(--ink);line-height:1.55;font-size:16px}
+header{background:var(--board);color:var(--chalk);padding:26px 20px}
+header h1{font-size:26px;letter-spacing:.5px}
+header p{opacity:.85;font-family:var(--mono);font-size:13px;margin-top:4px}
+main{max-width:820px;margin:0 auto;padding:20px}
+section{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}
+h2{color:var(--board);font-size:20px;margin-bottom:10px;border-bottom:2px solid var(--line);padding-bottom:6px}
+h3{font-size:16px;margin:16px 0 6px}
+p,li{margin-bottom:8px}
+ul,ol{padding-left:22px}
+code,kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13.5px}
+.if{border-left:4px solid var(--board);background:var(--paper);border-radius:0 8px 8px 0;padding:10px 14px;margin:10px 0}
+.if b{color:var(--board)}
+.danger{border-left:4px solid var(--warn)}
+.danger b{color:var(--warn)}
+.warnbox{background:#FAE4E2;border:1.5px solid var(--warn);border-radius:8px;padding:12px 14px;margin:10px 0}
+.fill{display:inline-block;min-width:280px;border-bottom:1.5px solid var(--ink);height:20px;vertical-align:bottom}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:14.5px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--paper)}
+.toc{columns:2;column-gap:24px}
+.toc li{break-inside:avoid}
+@media (max-width:600px){.toc{columns:1}}
+@media print{
+  body{background:#fff}
+  section{border:none;padding:6px 0;break-inside:avoid-page}
+  header{background:#fff;color:#000;border-bottom:3px solid #000}
+  a{color:#000;text-decoration:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>PRESENTE — Owner's Manual &amp; Recovery Guide</h1>
+  <p>v3.1 kit · Keep this file with your master ZIP · Print a copy and fill in Section 1 by hand</p>
+</header>
+<main>
+
+<section>
+  <h2>Read this first</h2>
+  <p>This manual assumes the worst: the person who built this app is gone, the chat that created it is gone, and something just broke. Everything you need to diagnose, repair, or completely rebuild Presente is in this document plus the <b>master ZIP</b> (the 14-file kit this manual shipped with). As long as you have the ZIP, a Google account, and a GitHub account, the whole system can be rebuilt from nothing in about 30 minutes.</p>
+  <p><b>The one rule that makes everything else recoverable:</b> keep the master ZIP and your weekly backup files in at least two places (for example: your personal Google Drive AND a USB drive or laptop). Every recovery drill below starts from those files.</p>
+</section>
+
+<section>
+  <h2>1. My system (print this page, fill in by hand)</h2>
+  <div class="warnbox"><b>Do not type your token into this file if it is uploaded to your public repository.</b> These blanks are for a printed copy kept at home.</div>
+  <p>My app link: <span class="fill"></span></p>
+  <p>My GitHub username: <span class="fill"></span> &nbsp; Repository name: <span class="fill"></span></p>
+  <p>My Google Sheet is named: <span class="fill"></span> under account: <span class="fill"></span></p>
+  <p>My Apps Script /exec URL: <span class="fill"></span></p>
+  <p>My token (handwritten only): <span class="fill"></span></p>
+  <p>My backups are stored in: <span class="fill"></span> and <span class="fill"></span></p>
+  <p>Date of the last backup I verified: <span class="fill"></span></p>
+</section>
+
+<section>
+  <h2>2. How the system fits together</h2>
+  <table>
+    <tr><th>Part</th><th>What it holds</th><th>If it dies, you lose…</th></tr>
+    <tr><td><b>GitHub repository</b> (your files + GitHub Pages)</td><td>The app itself: <code>index.html</code>, <code>checkin.html</code>, this manual, icons, libraries, <code>sw.js</code>, <code>manifest.json</code></td><td>Nothing permanent — re-upload the ZIP contents to any repo (Drill D)</td></tr>
+    <tr><td><b>Google Sheet + Apps Script</b></td><td>The shared copy of every mark (Events tab), the roster (Roster tab), online-class sessions (Sessions tab), and the email sender</td><td>Shared history — recoverable from any device or backup file via <i>Re-send everything</i> (Drill C)</td></tr>
+    <tr><td><b>Your phone / iPad</b></td><td>A full local copy of roster + marks; works offline</td><td>Only marks made offline that never synced (usually none) — everything else returns via sync (Drill A)</td></tr>
+    <tr><td><b>Backup files</b> (<code>presente-backup-*.json</code>)</td><td>A complete snapshot: classes, students, every mark, settings</td><td>This is your last line of defense. Guard it.</td></tr>
+  </table>
+  <p>Because every part holds a copy or can be rebuilt from the ZIP, <b>no single failure loses your records</b> — as long as backups exist.</p>
+</section>
+
+<section>
+  <h2>3. Troubleshooting — find your symptom</h2>
+
+  <h3>The app itself</h3>
+  <div class="if"><b>IF the app won't open / blank page / spinning:</b> check the device's internet, then force-close and reopen. Still stuck: open the app link in a normal browser tab and hard-refresh (pull down, or Ctrl+Shift+R on a computer). Still stuck: on GitHub, repo → Settings → Pages — confirm it still says "Your site is live". Still stuck: re-upload all 12 web files from the master ZIP to the repo (Drill D, step 2 onward).</div>
+  <div class="if"><b>IF you see a 404 "File not found":</b> the file at that address is missing or misnamed. The app must exist as <code>index.html</code> at the top level of the repository — check the repo file list. Re-upload from the ZIP if needed.</div>
+  <div class="if"><b>IF you see a red "Preview mode" banner:</b> you opened the raw file instead of your hosted link. Close it and open your real app link (Section 1).</div>
+  <div class="if"><b>IF the app feels slow or complains about storage:</b> your yearly archive is overdue. Do the end-of-year ritual (Section 5) even mid-year if needed — export, backup, archive, reconnect a fresh Sheet.</div>
+
+  <h3>Scanning</h3>
+  <div class="if"><b>IF the camera won't start:</b> the browser was denied permission. iPhone/iPad: Settings app → Safari (or the site's settings) → Camera → Allow; if launched from the home-screen icon, delete the icon, open the link in Safari, allow camera, re-add to Home Screen. Android: Chrome → ⋮ → Settings → Site settings → Camera. Meanwhile, <b>Photo mode</b> always works: it snaps a picture and decodes it.</div>
+  <div class="if"><b>IF a QR won't scan:</b> more light, hold steady, fill the frame. A damaged card: reprint from Export → Print QR cards, or send the student their PNG (▣ button → Save PNG).</div>
+  <div class="if"><b>IF scanning says "Student not in roster":</b> that student was removed from all classes. Re-add them (this creates a NEW code — reprint their card), or if the removal was a mistake, restore your latest backup.</div>
+
+  <h3>Sync</h3>
+  <div class="if"><b>IF the header says "sync off":</b> this device never got the URL + token. Settings → paste both → Save → Sync now.</div>
+  <div class="if"><b>IF the dot is red ("sync error"):</b> read the message under Settings → Sync. In order: (1) internet working? (2) URL and token exactly right — retype the token, watch for spaces; (3) run the gate test: open <code>YOUR-EXEC-URL?chk=test</code> in a private browser window — you should see a short <code>{"ok":false...}</code> line. A Google login page instead means the deployment access isn't "Anyone" (or an org admin changed policy): redeploy via Apps Script → Deploy → Manage deployments → pencil → check settings → New version.</div>
+  <div class="if"><b>IF marks are missing on the other device:</b> both devices online → Sync now on both. The truth lives in the Sheet's <b>Events</b> tab — open it on a computer; if the marks are THERE, the lagging device just needs a sync; if they're NOT there, the originating device hasn't synced — open it online.</div>
+  <div class="if"><b>IF the two devices show different rosters:</b> whichever device has the CORRECT roster: make any tiny edit (rename a class and rename it back) → Sync now on it, then Sync now on the other. Latest roster edit wins.</div>
+
+  <h3>Emails</h3>
+  <div class="if"><b>IF confirmation emails don't arrive:</b> in order: (1) the student has an email saved (✎ edit shows it)? (2) <code>SEND_EMAILS = true</code> in the script, saved, AND republished (Manage deployments → New version)? (3) recipient checked spam? (4) quota: ~100 recipients/day on a personal Gmail-account Sheet, 1,500/day on a Workspace-account Sheet — once exhausted, mail silently resumes the next day; (5) emails only send for Present/Late marks made by scan or tap — never for the auto-Absent sweep or online self check-ins (the check-in page itself is the confirmation).</div>
+
+  <h3>Online check-in links</h3>
+  <div class="if"><b>IF students say the link doesn't work:</b> (1) expired — links die at the deadline by design; make a new one. (2) "Link not recognized" — the link got mangled in chat; re-copy and resend the whole thing. (3) A Google login appears for students — org policy changed; run the gate test above. (4) A 404 — <code>checkin.html</code> is missing from the repo; upload it from the ZIP.</div>
+  <div class="if"><b>IF a student is marked whom you doubt was present:</b> open Records — self check-ins are labeled and timestamped to the second; the Sessions tab in the Sheet shows exactly which code checked in when. Codes are per-student: someone used that student's own QR/code.</div>
+
+  <h3>Exports</h3>
+  <div class="if"><b>IF CSV/PDF/Word buttons do nothing:</b> the browser is blocking downloads or pop-ups for the site — allow them in site settings, or try from the other device. PDF falls back to a print dialog if its library is missing: choose "Save as PDF" there.</div>
+</section>
+
+<section>
+  <h2>4. Recovery drills</h2>
+
+  <h3>Drill A — a device is lost, broken, or wiped (5 minutes)</h3>
+  <ol>
+    <li>On the new/replacement device, open your app link → Add to Home Screen.</li>
+    <li>Settings → paste the /exec URL + token → Save → Sync now.</li>
+    <li>Everything returns: roster and full history pull from the Sheet. Verify a Records date, then resume.</li>
+  </ol>
+
+  <h3>Drill B — a device's data was accidentally erased but the device works</h3>
+  <p>Same as Drill A. Only if the Sheet is ALSO gone do you need a backup file: Export tab → Restore backup → pick your newest <code>presente-backup-*.json</code> (check your computer's auto-backup folder — it holds dated copies) → then Drill C step 4.</p>
+
+  <h3 class="danger">Drill C — the Google side is gone (account closed, Sheet deleted, org account lost)</h3>
+  <ol>
+    <li>Don't panic: your devices still hold everything locally and work offline.</li>
+    <li>Under any Google account you control: <code>sheet.new</code> → Extensions → Apps Script → paste <code>sync-script.gs</code> from the ZIP → set a token → Deploy → New deployment → Web app → Execute as Me / Anyone → copy the new /exec URL. Run the gate test.</li>
+    <li>If your devices were wiped too: first Restore backup from your newest backup file on one device.</li>
+    <li>On the device with the most complete data: Settings → paste the NEW URL + token → Save → then press <b>"Re-send everything to the Sheet"</b>. Watch the header dot until green — the entire history uploads (it auto-continues in batches).</li>
+    <li>On the second device: paste the same URL + token → Sync now → then also press Re-send everything (this contributes any marks unique to that device; duplicates are ignored automatically).</li>
+    <li>Update Section 1 of your printed manual with the new URL. If you moved off a Workspace account, remember the email quota drops to ~100/day.</li>
+  </ol>
+
+  <h3>Drill D — the GitHub side is gone (account or repo lost)</h3>
+  <ol>
+    <li>Your data is untouched — it lives on devices and in the Sheet. Only the app's home is gone.</li>
+    <li>On any GitHub account: create a repository → upload the 12 web files from the master ZIP → Settings → Pages → Deploy from branch main → wait → open the new link.</li>
+    <li>On both devices: delete the old home-screen icon, open the new link, Add to Home Screen, and reconnect Settings (URL + token are unchanged — they belong to the Sheet, not GitHub).</li>
+  </ol>
+
+  <h3>Drill E — an update broke something; go back to a working version</h3>
+  <p>Two ways, either works:</p>
+  <ul>
+    <li><b>Master ZIP method (simplest):</b> re-upload the file(s) from the ZIP over the broken ones. The ZIP is your certified-working version.</li>
+    <li><b>GitHub history method:</b> in the repo, click the broken file → <b>History</b> (clock icon) → pick an older commit → view the file there → Download raw file (or copy its contents) → upload/commit it back. GitHub keeps every version of every file forever.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>5. Routine maintenance (the whole job)</h2>
+  <table>
+    <tr><th>When</th><th>Do</th></tr>
+    <tr><td><b>Weekly</b></td><td>Export tab → <b>Download backup</b> → move the file into your backup folder (Drive + second place). Two minutes. This habit is 90% of your safety. Automated option: set up <b>Auto-backup to this computer</b> (Settings, in Chrome/Edge on a PC) — then simply opening the app on that computer writes a dated backup file and a plain CSV of all marks into your chosen folder by itself.</td></tr>
+    <tr><td><b>Monthly</b></td><td>Open the app online on BOTH devices; confirm green dot. Glance at the Sheet's Events tab once — is it growing?</td></tr>
+    <tr><td><b>Yearly (end of SY) — mandatory</b></td><td>Per class: export final CSV + PDF register + Time log. Download backup. Settings → Danger zone → <b>End school year — archive &amp; reset</b> (keep classes) on BOTH devices. Rename the old Sheet "Presente SY __–__ ARCHIVED" (it stays in Drive forever). New Sheet + script for the new year (Drill C step 2), connect both devices. Required because phone storage caps around 5MB.</td></tr>
+    <tr><td><b>Never</b></td><td>Clear browser data on these devices · delete the repo · delete/rename the active Sheet · share the URL + token · turn off automatic device clocks.</td></tr>
+    <tr><td><b>Always</b></td><td>2-factor authentication on GitHub and every Google account involved. If the Sheet lives on a school/org account: that account is your employer's, not yours — your weekly backups are what make leaving that job survivable.</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>6. Rebuild from absolute zero (nothing exists but the ZIP)</h2>
+  <ol>
+    <li><b>App:</b> github.com → sign up → New repository (public) → upload the 12 web files from the ZIP → Settings → Pages → Deploy from a branch → main → save → wait 2 min → open <code>https://USERNAME.github.io/REPONAME/</code>.</li>
+    <li><b>Backend:</b> <code>sheet.new</code> → Extensions → Apps Script → paste <code>sync-script.gs</code> → set TOKEN (and <code>SEND_EMAILS = true</code> if wanted) → Save → Deploy → New deployment → Web app → Execute as Me / Access: Anyone → authorize → copy /exec URL → gate test (<code>?chk=test</code> in a private window must NOT show a login page).</li>
+    <li><b>Devices:</b> open the link on each → Add to Home Screen → Settings → URL + token → Sync now.</li>
+    <li><b>Data:</b> fresh start: build the roster (Roster tab → Bulk add) and print QR cards. Restoring old data: Export → Restore backup with your newest backup file, then Settings → Re-send everything to the Sheet.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>7. Getting help in the future</h2>
+  <p>This system was built in a private AI conversation that no longer exists and cannot be looked up — <b>no future assistant remembers it</b>. That's fine, because it was designed to be picked up cold:</p>
+  <ul>
+    <li>Any web developer can maintain it from the ZIP: it's one plain HTML/JavaScript app, one small Google Apps Script, no accounts, no framework, no server of anyone else's.</li>
+    <li>To get AI help again: start a new conversation, attach <code>index.html</code>, <code>sync-script.gs</code>, and this manual, and say: <i>"This is a QR attendance app I own — app on GitHub Pages, data synced via this Apps Script to my Google Sheet. Here's my problem: …"</i> Those three files contain everything needed to understand and safely modify the system.</li>
+    <li>Before letting ANYONE (human or AI) change it: Download backup first, and keep the master ZIP untouched as your way back (Drill E).</li>
+  </ul>
+  <h3>Facts a helper will ask for</h3>
+  <ul>
+    <li>Data lives in the Sheet as: <b>Events</b> (one row per mark: uid, timestamps, date, class, student, status P/L/A/E, via scan/tap/auto/self), <b>Roster</b> (classId, className, studentId, name, number, email), <b>Sessions</b> (online check-in keys and expiries), <b>Meta</b> (roster version).</li>
+    <li>QR cards encode <code>P1|classId|studentId</code>; scanning finds the student in whatever class they're in now, so cards survive transfers.</li>
+    <li>The token gates all reading/writing except the student check-in endpoint, which accepts only a short-lived session key and can only mark a listed student Present during its window.</li>
+    <li>Conflict rule everywhere: latest change wins. Server ignores duplicate uids, which is why Re-send everything is always safe.</li>
+  </ul>
+</section>
+
+<p style="text-align:center;color:var(--soft);font-family:var(--mono);font-size:12px;margin:20px 0">
+Presente v3.1 · This manual is part of the master kit · Print me: your browser's Print → Save as PDF makes a paper/PDF copy
+</p>
+</main>
+</body>
+</html>
