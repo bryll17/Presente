@@ -57,7 +57,8 @@ label{font-size:13px;font-weight:600;color:var(--ink-soft);display:block;margin-
 .card{background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
 .row{display:flex;gap:10px;align-items:end}
 .row>*{flex:1}
-.row .fit{flex:0 0 auto}
+.row .fit{flex:0 0 auto;width:auto}
+button.fit{width:auto}
 h2{font-size:17px;font-weight:700;margin-bottom:10px}
 .muted{color:var(--ink-soft);font-size:14px}
 .mono{font-family:var(--mono)}
@@ -178,7 +179,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v3.3</span>
+  <span class="brand-sub">attendance · v3.6</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -240,8 +241,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <h2>Students <span class="muted" id="cdCount"></span></h2>
       <div id="studentList"></div>
       <div class="row" style="margin-top:10px">
-        <div style="flex:2"><input id="stuName" placeholder="Student name"></div>
-        <div><input id="stuNum" placeholder="No. (opt.)"></div>
+        <div><input id="stuName" placeholder="Student ID or name"></div>
         <button class="btn fit" id="btnAddStu">Add</button>
       </div>
       <details style="margin-top:10px">
@@ -380,7 +380,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v3.3 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v3.6 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -812,7 +812,7 @@ function findStudentGlobal(sid){
 }
 function editStudent(cls,id){
   var s=findStu(cls,id); if(!s) return;
-  var name=prompt('Student name:',s.name); if(name===null) return;
+  var name=prompt('Student ID / name (this is what shows on scans, cards, and reports):',s.name); if(name===null) return;
   var num=prompt('Number (optional):',s.num||''); if(num===null) num=s.num||'';
   var em=prompt('Email for scan confirmations (optional):',s.em||''); if(em===null) em=s.em||'';
   name=name.trim(); if(!name) return;
@@ -860,9 +860,9 @@ function addClass(){
 }
 function addStudent(){
   var cls=getClass(detailClassId); if(!cls) return;
-  var name=$('#stuName').value.trim(); if(!name){ toast('Type a name'); return; }
-  cls.students.push({id:uid(),name:name,num:$('#stuNum').value.trim()});
-  $('#stuName').value=''; $('#stuNum').value=''; $('#stuName').focus();
+  var name=$('#stuName').value.trim(); if(!name){ toast('Type a student ID or name'); return; }
+  cls.students.push({id:uid(),name:name,num:'',em:''});
+  $('#stuName').value=''; $('#stuName').focus();
   touchRoster(); renderClassDetail();
 }
 function bulkAdd(){
@@ -1680,7 +1680,6 @@ function init(){
     detailClassId=null; touchRoster(); renderClassHome(); renderSelects();
   };
   $('#btnAddStu').onclick=addStudent;
-  $('#stuNum').onkeydown=function(e){ if(e.key==='Enter') addStudent(); };
   $('#stuName').onkeydown=function(e){ if(e.key==='Enter') addStudent(); };
   $('#btnBulk').onclick=bulkAdd;
   $('#btnPrintQR').onclick=function(){ printCards(detailClassId); };
