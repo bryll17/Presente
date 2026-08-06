@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B4F3F">
+<title>Presente — Submit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --board:#0B4F3F; --chalk:#FFFDF6; --paper:#F4F5F1; --card:#FFFFFF;
+  --ink:#1B2420; --ink-soft:#5A665F; --line:#DDE2DB;
+  --p:#1E9E5A; --a:#D6453D; --dup:#8B6A00; --or:#EE7A2E;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --body:'Public Sans',system-ui,-apple-system,sans-serif;
+  --disp:'Archivo Black','Public Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--body);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.45;min-height:100vh}
+.head{background:var(--board);color:var(--chalk);padding:14px 16px;display:flex;align-items:baseline;gap:10px}
+.brand{font-family:var(--disp);font-size:20px}
+.subt{font-family:var(--mono);font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}
+main{max-width:520px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+h2{font-size:17px;margin-bottom:8px}
+.muted{color:var(--ink-soft);font-size:14px}
+label{font-size:13px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:5px}
+input,textarea{font-family:var(--body);font-size:16px;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;width:100%}
+textarea{resize:vertical}
+.btn{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border:1.5px solid var(--board);
+  border-radius:10px;font-weight:700;background:var(--board);color:var(--chalk);width:100%;cursor:pointer;font-size:16px;font-family:var(--body);margin-top:10px}
+.btn.soft{background:var(--card);color:var(--ink);border-color:var(--line);font-weight:600}
+.btn:disabled{opacity:.45}
+.camBox{position:relative;border-radius:12px;overflow:hidden;background:#101513;aspect-ratio:3/4;max-height:52vh}
+.camBox video{width:100%;height:100%;object-fit:cover}
+.reticle{position:absolute;inset:12%;border:3px solid rgba(255,253,246,.85);border-radius:14px;pointer-events:none}
+.choice{display:flex;gap:10px;align-items:center;border:1.5px solid var(--line);border-radius:10px;padding:12px;margin-top:8px;cursor:pointer}
+.choice input{width:22px;height:22px;accent-color:var(--board);flex:0 0 auto}
+#result{border-radius:14px;padding:24px 18px;text-align:center;color:#fff;display:none;transform:rotate(-1.5deg);border:4px solid rgba(255,255,255,.55)}
+#result.show{display:block}
+#result.ok{background:var(--p)}#result.warn{background:var(--dup)}#result.err{background:var(--a)}
+#rStatus{font-family:var(--mono);font-size:13px;letter-spacing:3px;text-transform:uppercase;opacity:.9}
+#rName{font-family:var(--disp);font-size:clamp(24px,7.5vw,36px);line-height:1.05;margin:8px 0;word-break:break-word}
+#rMeta{font-family:var(--mono);font-size:13px;opacity:.92}
+.badge{font-family:var(--mono);font-size:11px;background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:3px 9px;color:var(--ink-soft)}
+.hidden{display:none !important}
+#count{font-family:var(--mono);font-size:13px;color:var(--ink-soft)}
+.fileTag{font-family:var(--mono);font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px;word-break:break-all}
+</style>
+</head>
+<body>
+<header class="head"><span class="brand">PRESENTE</span><span class="subt">task submission</span></header>
+<main>
+  <div class="card" id="infoCard">
+    <h2 id="title">Loading…</h2>
+    <p class="muted" id="info">Checking this link…</p>
+    <p id="count" style="margin-top:6px"></p>
+  </div>
+
+  <div class="card hidden" id="stepQR">
+    <h2>Scan your QR code</h2>
+    <p class="muted">Point the camera at your Presente QR (printed card or the one emailed to you). This verifies who is submitting.</p>
+    <div class="camBox" id="camWrap" style="display:none"><video id="cam" playsinline muted></video><div class="reticle"></div></div>
+    <button class="btn" id="qrStart">Start camera</button>
+    <button class="btn soft" id="qrUpload">Upload a photo of my QR</button>
+    <input type="file" id="qrFile" accept="image/*" class="hidden">
+    <p class="muted" id="qrMsg" style="margin-top:8px"></p>
+  </div>
+
+  <div class="card hidden" id="stepWork">
+    <div style="display:flex;align-items:center;gap:8px">
+      <h2 style="margin-bottom:0;flex:1" id="whoName"></h2>
+      <span class="badge hidden" id="againBadge">already submitted — this replaces it in the list</span>
+    </div>
+    <p class="muted" id="whoTask" style="margin:6px 0 10px"></p>
+
+    <div id="modeFile" class="hidden">
+      <button class="btn soft" id="pickFile">Choose a file (max 9 MB)</button>
+      <input type="file" id="fileIn" class="hidden">
+      <div class="fileTag hidden" id="fileTag"></div>
+      <label style="margin-top:12px">Or paste a Google Drive / any link instead</label>
+      <input id="linkIn" placeholder="https://drive.google.com/…" autocapitalize="off">
+      <p class="muted" style="margin-top:6px">Big file? Upload it to your own Google Drive, set sharing to "Anyone with the link", and paste the link here.</p>
+    </div>
+
+    <div id="modeShort" class="hidden">
+      <label>Your answer</label>
+      <textarea id="ansIn" rows="5" placeholder="Type your answer…"></textarea>
+    </div>
+
+    <div id="modeChoice" class="hidden">
+      <label id="choiceLbl">Choose one</label>
+      <div id="choices"></div>
+    </div>
+
+    <button class="btn" id="btnSubmit">Submit</button>
+    <button class="btn soft" id="btnNotMe">This is not me — rescan</button>
+  </div>
+
+  <div id="result"><div id="rStatus"></div><div id="rName"></div><div id="rMeta"></div></div>
+  <p class="muted" style="text-align:center;margin-top:10px">Submissions close at the deadline. If someone submitted as you, tell your teacher immediately.</p>
+</main>
+<script src="jsqr.js"></script>
+<script>
+'use strict';
+var $=function(s){ return document.querySelector(s); };
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var qs=new URLSearchParams(location.search);
+var TASK=(qs.get('task')||'').trim();
+var SURL=(qs.get('s')||'').trim();
+var HQ=null;
+try{
+  var hm=location.hash.match(/#q=([^&]+)/);
+  if(hm) HQ=JSON.parse(decodeURIComponent(escape(atob(hm[1]))));
+}catch(e){ HQ=null; }
+var clockOffset=0, dueTs=0, SID='', WHO=null, fileB64='', fileName='', fileMime='';
+var stream=null, scanning=false;
+
+function fail(t,m){ $('#title').textContent=t; $('#info').textContent=m; $('#count').textContent='';
+  ['stepQR','stepWork'].forEach(function(x){ $('#'+x).classList.add('hidden'); }); stopCam(); }
+function showResult(kind,status,name,meta){
+  var r=$('#result'); r.className=''; r.id='result'; r.classList.add('show',kind);
+  $('#rStatus').textContent=status; $('#rName').textContent=name; $('#rMeta').textContent=meta;
+}
+function tick(){
+  if(!dueTs) return;
+  var left=dueTs-(Date.now()+clockOffset);
+  if(left<=0){ $('#count').textContent='Closed — the deadline has passed.'; fail('Submissions closed','The deadline has passed. Talk to your teacher.'); return; }
+  var d=Math.floor(left/86400000), hh=Math.floor((left%86400000)/3600000), mm=Math.floor((left%3600000)/60000);
+  $('#count').textContent='Closes in '+(d>0?d+'d ':'')+hh+'h '+mm+'m';
+  setTimeout(tick,30000);
+}
+function post(p){ return fetch(SURL,{method:'POST',body:JSON.stringify(p)}).then(function(r){ return r.json(); }); }
+
+function stopCam(){
+  scanning=false;
+  if(stream){ stream.getTracks().forEach(function(t){ t.stop(); }); stream=null; }
+  $('#camWrap').style.display='none';
+}
+function foundPayload(txt){
+  var m=String(txt||'').trim().match(/^P1\|([^|]+)\|(.+)$/);
+  if(!m){ $('#qrMsg').textContent='That QR is not a Presente code.'; return; }
+  stopCam();
+  SID=m[2];
+  $('#qrMsg').textContent='Checking…';
+  post({op:'subwho',task:TASK,sid:SID})
+  .then(function(j){
+    if(!j.ok){
+      if(j.err==='closed'){ fail('Submissions closed','The deadline has passed. Talk to your teacher.'); return; }
+      if(j.err==='notfound'){ $('#qrMsg').textContent='This QR does not belong to this class. Use your own code, or ask your teacher.'; return; }
+      $('#qrMsg').textContent='Link not valid anymore — ask your teacher.'; return;
+    }
+    WHO=j; $('#qrMsg').textContent='';
+    $('#stepQR').classList.add('hidden');
+    $('#stepWork').classList.remove('hidden');
+    $('#whoName').textContent=j.name;
+    $('#whoTask').textContent=$('#title').textContent.replace(/^Task: /,'');
+    $('#againBadge').classList.toggle('hidden',!j.submitted);
+    var qt=(HQ&&HQ.t)||j.qtype||'';
+    if(j.type==='question'){
+      if(qt==='short'){ $('#modeShort').classList.remove('hidden'); }
+      else{
+        $('#modeChoice').classList.remove('hidden');
+        $('#choiceLbl').textContent=qt==='poll'?'Your vote':'Choose one answer';
+        var cs=(HQ&&HQ.c)||[];
+        if(!cs.length){ fail('Link incomplete','Ask your teacher to resend the submission link.'); return; }
+        $('#choices').innerHTML=cs.map(function(c,i){
+          return '<label class="choice"><input type="radio" name="ch" value="'+i+'"><span>'+esc(c)+'</span></label>';
+        }).join('');
+      }
+    } else {
+      $('#modeFile').classList.remove('hidden');
+    }
+  })
+  .catch(function(){ $('#qrMsg').textContent='No connection — check your internet and rescan.'; });
+}
+function scanLoop(){
+  if(!scanning) return;
+  var v=$('#cam');
+  if(v.readyState>=2){
+    var cv=document.createElement('canvas');
+    var w=Math.min(640,v.videoWidth), h=Math.round(w*v.videoHeight/v.videoWidth);
+    cv.width=w; cv.height=h;
+    var ctx=cv.getContext('2d');
+    ctx.drawImage(v,0,0,w,h);
+    try{
+      var img=ctx.getImageData(0,0,w,h);
+      var code=window.jsQR&&jsQR(img.data,w,h,{inversionAttempts:'dontInvert'});
+      if(code&&code.data){ foundPayload(code.data); return; }
+    }catch(e){}
+  }
+  requestAnimationFrame(scanLoop);
+}
+$('#qrStart').onclick=function(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ $('#qrMsg').textContent='No camera here — use "Upload a photo of my QR".'; return; }
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}},audio:false})
+  .then(function(s){ stream=s; var v=$('#cam'); v.srcObject=s; v.play().catch(function(){});
+    $('#camWrap').style.display='block'; scanning=true; requestAnimationFrame(scanLoop); })
+  .catch(function(){ $('#qrMsg').textContent='Camera blocked — use "Upload a photo of my QR".'; });
+};
+$('#qrUpload').onclick=function(){ $('#qrFile').click(); };
+$('#qrFile').onchange=function(){
+  var f=this.files[0]; this.value='';
+  if(!f) return;
+  var img=new Image();
+  img.onload=function(){
+    var cv=document.createElement('canvas');
+    var w=Math.min(1000,img.width), h=Math.round(w*img.height/img.width);
+    cv.width=w; cv.height=h;
+    var ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+    URL.revokeObjectURL(img.src);
+    try{
+      var d=ctx.getImageData(0,0,w,h);
+      var code=window.jsQR&&jsQR(d.data,w,h,{inversionAttempts:'attemptBoth'});
+      if(code&&code.data){ foundPayload(code.data); return; }
+    }catch(e){}
+    $('#qrMsg').textContent='Could not read a QR in that photo — try a clearer, closer shot.';
+  };
+  img.src=URL.createObjectURL(f);
+};
+$('#pickFile').onclick=function(){ $('#fileIn').click(); };
+$('#fileIn').onchange=function(){
+  var f=this.files[0]; this.value='';
+  if(!f) return;
+  if(f.size>9*1024*1024){ $('#fileTag').classList.remove('hidden'); $('#fileTag').textContent='Too big ('+Math.round(f.size/1048576)+' MB). Use the Drive-link option below.'; fileB64=''; return; }
+  var r=new FileReader();
+  r.onload=function(){
+    fileB64=String(r.result).split(',')[1]||'';
+    fileName=f.name; fileMime=f.type||'application/octet-stream';
+    $('#fileTag').classList.remove('hidden');
+    $('#fileTag').textContent='Ready: '+f.name+' ('+Math.round(f.size/1024)+' KB)';
+    $('#linkIn').value='';
+  };
+  r.readAsDataURL(f);
+};
+$('#btnNotMe').onclick=function(){
+  WHO=null; SID=''; fileB64='';
+  $('#stepWork').classList.add('hidden');
+  ['modeFile','modeShort','modeChoice'].forEach(function(x){ $('#'+x).classList.add('hidden'); });
+  $('#stepQR').classList.remove('hidden');
+};
+$('#btnSubmit').onclick=function(){
+  if(!WHO){ return; }
+  var payload={op:'subput',task:TASK,sid:SID};
+  if(WHO.type==='question'){
+    var qt=(HQ&&HQ.t)||WHO.qtype;
+    if(qt==='short'){
+      var a=$('#ansIn').value.trim();
+      if(!a){ showResult('err','EMPTY','Type your answer',''); return; }
+      payload.kind='answer'; payload.ans=a;
+    } else {
+      var sel=document.querySelector('input[name="ch"]:checked');
+      if(!sel){ showResult('err','PICK ONE','Choose an option',''); return; }
+      payload.kind='answer'; payload.choice=Number(sel.value);
+    }
+  } else {
+    var link=$('#linkIn').value.trim();
+    if(fileB64){ payload.kind='file'; payload.fname=fileName; payload.mime=fileMime; payload.b64=fileB64; }
+    else if(link){ if(link.indexOf('http')!==0){ showResult('err','BAD LINK','Paste a full link','It must start with http'); return; }
+      payload.kind='link'; payload.link=link; }
+    else { showResult('err','NOTHING TO SUBMIT','Pick a file or paste a link',''); return; }
+  }
+  var b=this; b.disabled=true; b.textContent='Submitting…';
+  post(payload)
+  .then(function(j){
+    b.disabled=false; b.textContent='Submit';
+    if(j.ok){
+      ['stepQR','stepWork'].forEach(function(x){ $('#'+x).classList.add('hidden'); });
+      showResult('ok','SUBMITTED ✓',j.name||'Done',(j.tm||'')+' · your teacher can see it now');
+      return;
+    }
+    if(j.err==='closed'){ fail('Submissions closed','The deadline has passed. Talk to your teacher.'); }
+    else if(j.err==='toobig'){ showResult('err','FILE TOO BIG','Use the Drive-link option',''); }
+    else if(j.err==='badlink'){ showResult('err','BAD LINK','Paste a full http link',''); }
+    else { showResult('err','TRY AGAIN','Something went wrong','Rescan your QR and retry'); }
+  })
+  .catch(function(){ b.disabled=false; b.textContent='Submit'; showResult('err','NO CONNECTION','Check your internet',''); });
+};
+function init(){
+  if(!TASK||!SURL||SURL.indexOf('https://')!==0){ fail('This link is incomplete','Ask your teacher to send the submission link again.'); return; }
+  fetch(SURL+'?sub='+encodeURIComponent(TASK))
+  .then(function(r){ return r.json(); })
+  .then(function(j){
+    if(!j.ok){ fail('Link not recognized','Ask your teacher for the correct submission link.'); return; }
+    clockOffset=(j.now||Date.now())-Date.now();
+    dueTs=Number(j.due)||0;
+    $('#title').textContent='Task: '+(j.title||'');
+    $('#info').textContent=(j.cls?j.cls+' · ':'')+'Scan your QR, then submit before the deadline.';
+    if(!j.open){ fail('Submissions closed','The deadline has passed. Talk to your teacher.'); return; }
+    $('#stepQR').classList.remove('hidden'); tick();
+  })
+  .catch(function(){ fail('Cannot reach the system','Check your internet connection, then reload this page.'); });
+}
+init();
+</script>
+</body>
+</html>

@@ -189,7 +189,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v5.2</span>
+  <span class="brand-sub">attendance · v6.0</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -308,6 +308,18 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 </section>
 
 <!-- EXPORT -->
+<section id="panel-tasks" class="panel">
+  <div class="card" id="taskHome">
+    <h2>Tasks</h2>
+    <div class="row" style="margin-top:8px">
+      <div><label>Class</label><select id="taskClass"></select></div>
+      <button class="btn fit" id="btnNewTask">+ New</button>
+    </div>
+    <div id="taskList" style="margin-top:10px"></div>
+    <p class="muted" style="margin-top:8px">Create Assignments, Questions (short answer, multiple choice, poll), Materials, and Topics. Assign emails the task to every student in the class; the summary shows who has and hasn't submitted, with nudges.</p>
+  </div>
+  <div id="taskView" style="display:none"></div>
+</section>
 <section id="panel-export" class="panel">
   <div class="card">
     <h2>Export attendance</h2>
@@ -418,13 +430,14 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v5.2 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v6.0 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
   <button data-tab="scan" class="on"><span class="ic">▣</span>Scan</button>
   <button data-tab="roster"><span class="ic">☰</span>Roster</button>
   <button data-tab="records"><span class="ic">✓</span>Records</button>
+  <button data-tab="tasks"><span class="ic">🗂</span>Tasks</button>
   <button data-tab="export"><span class="ic">⇩</span>Export</button>
   <button data-tab="settings"><span class="ic">⚙</span>Settings</button>
 </nav>
@@ -3698,12 +3711,21 @@ function storageSet(v){
 /* ============ state ============ */
 var state=null;
 function blankState(){
-  return { classes:[], ev:[], settings:{url:'',token:''},
-    rosterTs:0, rosterDirty:false, lastServerTs:0, dev: uid() };
+  return { classes:[], ev:[], tasks:[], subs:{}, gr:{},
+    settings:{url:'',token:''},
+    rosterTs:0, rosterDirty:false, tasksTs:0, tasksDirty:false,
+    lastServerTs:0, dev: uid() };
 }
-function loadState(){
+function ensureFields(){
+  if(!state.tasks) state.tasks=[];
+  if(!state.subs) state.subs={};
+  if(!state.gr) state.gr={};
+  if(!state.tasksTs) state.tasksTs=0;
+  if(state.tasksDirty==null) state.tasksDirty=false;
+}
+function loadState(){ /* v6 */
   var raw=storageGet();
-  if(!raw){ state=blankState(); return; }
+  if(!raw){ state=blankState(); ensureFields(); return; }
   try{ state=JSON.parse(raw); }catch(e){ state=blankState(); return; }
   var b=blankState();
   for(var k in b) if(state[k]===undefined) state[k]=b[k];
@@ -3767,6 +3789,7 @@ function fillClassSelect(sel, withAll){
 }
 function syncExpSelectors(){ fillClassSelect($('#expClass'),false); }
 function renderSelects(){
+  fillClassSelect($('#taskClass'));
   fillClassSelect($('#scanClass'),false);
   fillClassSelect($('#recClass'),false);
   fillClassSelect($('#expClass'),false);
@@ -3833,7 +3856,7 @@ function renderClassDetail(){
         '<button class="icon-btn" title="Move to another class" data-mv="'+esc(s.id)+'">⇄</button>'+
         '<button class="icon-btn" title="Edit" data-ed="'+esc(s.id)+'">✎</button>'+
         '<button class="icon-btn" title="Remove" data-rm="'+esc(s.id)+'">✕</button>');
-      return '<div class="item">'+box+'<div class="grow"><div class="nm">'+(s.pin?'📌 ':'')+esc(s.name)+'</div>'+
+      return '<div class="item">'+box+'<div class="grow" data-st1="'+esc(s.id)+'"><div class="nm">'+(s.pin?'📌 ':'')+esc(s.name)+'</div>'+
         (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+icons+'</div>';
     }).join('');
     if(arch.length){
@@ -3849,6 +3872,12 @@ function renderClassDetail(){
     $$('#studentList [data-mv]').forEach(function(b){ b.onclick=function(){ openMove(cls, b.getAttribute('data-mv')); }; });
     $$('#studentList [data-rm]').forEach(function(b){ b.onclick=function(){ removeStudent(cls, b.getAttribute('data-rm')); }; });
     $$('#studentList [data-qr]').forEach(function(b){ b.onclick=function(){ showOneQR(cls, b.getAttribute('data-qr')); }; });
+    if(!selMode){
+      $$('#studentList [data-st1]').forEach(function(el){
+        el.style.cursor='pointer';
+        el.onclick=function(){ var st=findStu(cls,el.getAttribute('data-st1')); if(st&&!st.ar) studentTasksModal(cls,st); };
+      });
+    }
   }
 }
 function saveSched(cls){
@@ -4421,6 +4450,315 @@ function openEnroll(){
   wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
 }
 
+/* ============ tasks ============ */
+var taskViewId=null, editTaskId=null;
+function taskRows(){
+  return state.tasks.map(function(t){
+    return [t.id,t.c,t.type,t.title,t.due||0,t.pts||0,t.rub||'',JSON.stringify(t.cfg||{}),t.created||0,t.fl||'',t.rmd||''];
+  });
+}
+function rebuildTasks(rows){
+  state.tasks=(rows||[]).map(function(r){
+    var cfg={}; try{ cfg=r[7]?JSON.parse(String(r[7])):{}; }catch(e){}
+    return { id:String(r[0]||''), c:String(r[1]||''), type:String(r[2]||'assign'),
+      title:String(r[3]||''), due:Number(r[4]||0), pts:Number(r[5]||0),
+      rub:String(r[6]||''), cfg:cfg, created:Number(r[8]||0),
+      fl:String(r[9]||''), rmd:String(r[10]||'') };
+  }).filter(function(t){ return t.id; });
+}
+function touchTasks(){ state.tasksTs=Date.now(); state.tasksDirty=true; save(); requestSync(); }
+function getTask(id){ for(var i=0;i<state.tasks.length;i++) if(state.tasks[i].id===id) return state.tasks[i]; return null; }
+function classTasks(cid){ return state.tasks.filter(function(t){ return t.c===cid; }); }
+function subsForTask(tid){
+  var out={};
+  for(var u in state.subs){ var s=state.subs[u]; if(s.task===tid) (out[s.sid]=out[s.sid]||[]).push(s); }
+  return out;
+}
+function submitLinkFor(t){
+  var url=(state.settings.url||'').trim();
+  var base=location.href.replace(/[?#].*$/,'').replace(/[^\/]*$/,'');
+  var link=base+'submit.html?task='+encodeURIComponent(t.id)+'&s='+encodeURIComponent(url);
+  if(t.type==='question'&&t.cfg&&(t.cfg.qtype==='mc'||t.cfg.qtype==='poll')){
+    try{ link+='#q='+btoa(unescape(encodeURIComponent(JSON.stringify({t:t.cfg.qtype,c:t.cfg.choices||[]})))); }catch(e){}
+  }
+  return link;
+}
+function typeChip(t){
+  var m={assign:['A','#C7E8CF'],question:['Q','#C4E2F2'],material:['M','#E3D9C8'],topic:['T','#D6D0F0']};
+  var x=m[t.type]||m.assign;
+  return '<span style="display:inline-block;min-width:22px;text-align:center;background:'+x[1]+';border-radius:6px;font-family:var(--mono);font-size:12px;padding:2px 4px;margin-right:7px">'+x[0]+'</span>';
+}
+function renderTasks(){
+  var cid=$('#taskClass').value, cls=getClass(cid);
+  var list=$('#taskList');
+  $('#taskView').style.display='none'; $('#taskHome').style.display='block';
+  if(!cls){ list.innerHTML='<p class="muted">Add a class in Roster first.</p>'; return; }
+  var ts=classTasks(cid);
+  if(!ts.length){ list.innerHTML='<p class="muted">No tasks yet for this class.</p>'; return; }
+  var topics=ts.filter(function(t){ return t.type==='topic'; });
+  var items=ts.filter(function(t){ return t.type!=='topic'; }).sort(function(a,b){ return (b.created||0)-(a.created||0); });
+  function row(t){
+    var sm=subsForTask(t.id), n=0; for(var k in sm) n++;
+    var act=sortedStudents(cls).length;
+    var dueTxt=t.due?fmtTs(t.due):'no deadline';
+    var over=t.due&&Date.now()>t.due;
+    var counts=(t.type==='material')?'':('<span class="muted" style="font-family:var(--mono);font-size:12px">'+n+'/'+act+' ✓</span>');
+    return '<div class="item"><div class="grow"><div class="nm">'+typeChip(t)+esc(t.title)+'</div>'+
+      '<div class="sub"'+(over?' style="color:var(--a)"':'')+'>'+esc(dueTxt)+(t.pts?' · '+t.pts+' pts':'')+'</div></div>'+counts+
+      '<button class="btn soft sm" data-tv="'+esc(t.id)+'">Open</button>'+
+      '<button class="icon-btn" data-te="'+esc(t.id)+'">✎</button></div>';
+  }
+  var htmlOut='';
+  function section(label,arr){
+    if(!arr.length) return;
+    htmlOut+='<div class="sub" style="margin:10px 0 2px;font-weight:700">'+esc(label)+'</div>'+arr.map(row).join('');
+  }
+  topics.forEach(function(tp){
+    section(tp.title, items.filter(function(t){ return t.cfg&&t.cfg.topic===tp.id; }));
+  });
+  section(topics.length?'No topic':'', items.filter(function(t){ return !(t.cfg&&t.cfg.topic&&getTask(t.cfg.topic)); }));
+  topics.forEach(function(tp){
+    htmlOut+='<div class="item"><div class="grow"><div class="nm">'+typeChip(tp)+esc(tp.title)+'</div><div class="sub">topic</div></div>'+
+      '<button class="icon-btn" data-te="'+esc(tp.id)+'">✎</button></div>';
+  });
+  list.innerHTML=htmlOut;
+  $$('#taskList [data-tv]').forEach(function(b){ b.onclick=function(){ openTaskView(b.getAttribute('data-tv')); }; });
+  $$('#taskList [data-te]').forEach(function(b){ b.onclick=function(){ openTaskEditor(b.getAttribute('data-te')); }; });
+}
+function openTaskEditor(taskId){
+  var cid=$('#taskClass').value, cls=getClass(cid);
+  if(!cls){ toast('Pick a class first'); return; }
+  var t=taskId?getTask(taskId):null;
+  editTaskId=t?t.id:null;
+  var cfg=(t&&t.cfg)||{};
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  var topics=classTasks(cid).filter(function(x){ return x.type==='topic'&&(!t||x.id!==t.id); });
+  wrap.innerHTML='<div class="box" style="max-height:88vh;overflow:auto"><h2 style="margin:0">'+(t?'Edit task':'New task')+'</h2>'+
+    '<div><label>Type</label><div class="seg" id="tkType">'+
+      ['assign|Assignment','question|Question','material|Material','topic|Topic'].map(function(p){ var a=p.split('|');
+        return '<button data-ty="'+a[0]+'"'+(((t&&t.type)||'assign')===a[0]?' class="on" style="background:var(--board);color:var(--chalk)"':'')+'>'+a[1]+'</button>'; }).join('')+
+    '</div></div>'+
+    '<div><label>Title</label><input id="tkTitle" value="'+esc(t?t.title:'')+'"></div>'+
+    '<div id="tkBody">'+
+      '<div><label>Instructions</label>'+
+      '<div class="seg" style="margin-bottom:6px">'+
+        '<button type="button" data-cmd="bold"><b>B</b></button>'+
+        '<button type="button" data-cmd="italic"><i>I</i></button>'+
+        '<button type="button" data-cmd="underline"><u>U</u></button>'+
+        '<button type="button" data-cmd="insertUnorderedList">•</button>'+
+        '<button type="button" data-cmd="removeFormat">⌫</button></div>'+
+      '<div id="tkEd" contenteditable="true" style="border:1.5px solid var(--line);border-radius:10px;min-height:90px;padding:10px;background:#fff">'+(cfg.html||'')+'</div></div>'+
+      '<div><label>Links (Drive, YouTube, anything)</label>'+
+        '<div class="row"><div><input id="tkLinkIn" placeholder="https://…"></div><button class="btn soft fit" id="tkLinkAdd" type="button">Add</button></div>'+
+        '<div id="tkLinks"></div></div>'+
+      '<div class="row"><div><label>Points</label><input type="number" id="tkPts" min="0" value="'+((t&&t.pts)||0)+'"></div>'+
+        '<div><label>Due date</label><input type="date" id="tkDate"></div>'+
+        '<div><label>Time</label><input type="time" id="tkTime"></div></div>'+
+      '<div id="tkQWrap" style="display:none"><label>Question type</label><div class="seg" id="tkQt">'+
+        ['short|Short answer','mc|Multiple choice','poll|Poll'].map(function(p){ var a=p.split('|');
+          return '<button data-qt="'+a[0]+'"'+((cfg.qtype||'short')===a[0]?' class="on" style="background:var(--board);color:var(--chalk)"':'')+'>'+a[1]+'</button>'; }).join('')+
+        '</div>'+
+        '<div id="tkChWrap" style="display:none"><label>Choices (one per line)</label>'+
+        '<textarea id="tkCh" rows="4">'+esc((cfg.choices||[]).join('\n'))+'</textarea>'+
+        '<div id="tkKeyWrap" style="display:none"><label>Correct answer (kept secret; auto-scored silently)</label><select id="tkKey"></select></div></div></div>'+
+      '<div><label>Rubric (optional — used when grading)</label><textarea id="tkRub" rows="3" placeholder="Criterion = points, one per line&#10;Content = 10&#10;Delivery = 5">'+esc((t&&t.rub)||'')+'</textarea></div>'+
+      '<div><label>Topic</label><select id="tkTopic"><option value="">— none —</option>'+
+        topics.map(function(x){ return '<option value="'+esc(x.id)+'"'+((cfg.topic===x.id)?' selected':'')+'>'+esc(x.title)+'</option>'; }).join('')+'</select></div>'+
+    '</div>'+
+    '<button class="btn" id="tkSave">Save</button>'+
+    (t?'<button class="btn danger" id="tkDel">Delete task</button>':'')+
+    '<button class="btn soft" id="tkClose">Close</button></div>';
+  document.body.appendChild(wrap);
+  var curType=(t&&t.type)||'assign';
+  var curQt=cfg.qtype||'short';
+  var links=(cfg.links||[]).slice();
+  function paintLinks(){
+    $('#tkLinks').innerHTML=links.map(function(u,i){
+      return '<div class="item"><div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">'+esc(u)+'</div><button class="icon-btn" data-li="'+i+'">✕</button></div>';
+    }).join('');
+    $$('#tkLinks [data-li]').forEach(function(b){ b.onclick=function(){ links.splice(Number(b.getAttribute('data-li')),1); paintLinks(); }; });
+  }
+  function paintKey(){
+    var lines=$('#tkCh').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+    $('#tkKey').innerHTML='<option value="">— no auto-score —</option>'+lines.map(function(x,i){
+      return '<option value="'+i+'"'+((cfg.key!=null&&Number(cfg.key)===i)?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
+  }
+  function paintMode(){
+    $('#tkBody').style.display=curType==='topic'?'none':'block';
+    $('#tkQWrap').style.display=curType==='question'?'block':'none';
+    $('#tkChWrap').style.display=(curType==='question'&&curQt!=='short')?'block':'none';
+    $('#tkKeyWrap').style.display=(curType==='question'&&curQt==='mc')?'block':'none';
+    if(curType==='question'&&curQt==='mc') paintKey();
+  }
+  $$('#tkType button').forEach(function(b){ b.onclick=function(){
+    curType=b.getAttribute('data-ty');
+    $$('#tkType button').forEach(function(x){ x.classList.remove('on'); x.style.background=''; x.style.color=''; });
+    b.classList.add('on'); b.style.background='var(--board)'; b.style.color='var(--chalk)';
+    paintMode(); }; });
+  $$('#tkQt button').forEach(function(b){ b.onclick=function(){
+    curQt=b.getAttribute('data-qt');
+    $$('#tkQt button').forEach(function(x){ x.classList.remove('on'); x.style.background=''; x.style.color=''; });
+    b.classList.add('on'); b.style.background='var(--board)'; b.style.color='var(--chalk)';
+    paintMode(); }; });
+  $$('#tkEd').forEach(function(){});
+  $$('[data-cmd]').forEach(function(b){
+    b.onmousedown=function(e){ e.preventDefault(); };
+    b.onclick=function(){ document.execCommand(b.getAttribute('data-cmd'),false,null); $('#tkEd').focus(); };
+  });
+  $('#tkCh').oninput=paintKey;
+  $('#tkLinkAdd').onclick=function(){
+    var u=$('#tkLinkIn').value.trim();
+    if(u.indexOf('http')!==0){ toast('Paste a full link starting with http'); return; }
+    links.push(u); $('#tkLinkIn').value=''; paintLinks();
+  };
+  if(t&&t.due){ var d=new Date(t.due);
+    $('#tkDate').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    $('#tkTime').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  }
+  paintLinks(); paintMode();
+  $('#tkSave').onclick=function(){
+    var title=$('#tkTitle').value.trim();
+    if(!title){ toast('Give it a title'); return; }
+    var due=0;
+    if($('#tkDate').value){ due=new Date($('#tkDate').value+'T'+($('#tkTime').value||'23:59')).getTime()||0; }
+    var cfg2={ html:$('#tkEd').innerHTML, links:links, topic:$('#tkTopic').value||'' };
+    if(curType==='question'){
+      cfg2.qtype=curQt;
+      if(curQt!=='short'){
+        cfg2.choices=$('#tkCh').value.split('\n').map(function(x){ return x.trim(); }).filter(Boolean);
+        if(cfg2.choices.length<2){ toast('Give at least 2 choices'); return; }
+        if(curQt==='mc'&&$('#tkKey').value!=='') cfg2.key=Number($('#tkKey').value);
+      }
+    }
+    if(curType!=='topic'&&curType!=='material'&&!due){ toast('Set a deadline — the submit link closes at it'); return; }
+    if(t){ t.type=curType; t.title=title; t.due=due; t.pts=Number($('#tkPts').value)||0; t.rub=$('#tkRub').value.trim(); t.cfg=cfg2; }
+    else{
+      state.tasks.push({ id:uid(), c:cid, type:curType, title:title, due:due,
+        pts:Number($('#tkPts').value)||0, rub:$('#tkRub').value.trim(), cfg:cfg2, created:Date.now(), fl:'', rmd:'' });
+    }
+    touchTasks(); wrap.remove(); renderTasks();
+    toast('Saved. Use Open → Assign to email it to the class.');
+  };
+  if(t){ $('#tkDel').onclick=function(){
+    if(!confirm('Delete this task? Submissions already collected stay in your Sheet and Drive.')) return;
+    state.tasks=state.tasks.filter(function(x){ return x.id!==t.id; });
+    touchTasks(); wrap.remove(); renderTasks();
+  }; }
+  $('#tkClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+}
+function openTaskView(taskId){
+  taskViewId=taskId;
+  var t=getTask(taskId); if(!t) return;
+  var cls=getClass(t.c); if(!cls) return;
+  $('#taskHome').style.display='none';
+  var v=$('#taskView'); v.style.display='block';
+  var sm=subsForTask(t.id);
+  var act=sortedStudents(cls);
+  var doneN=0; act.forEach(function(s){ if(sm[s.id]) doneN++; });
+  var dueTxt=t.due?fmtTs(t.due):'no deadline';
+  var htmlOut='<div class="card"><button class="btn ghost sm" id="tvBack">← All tasks</button>'+
+    '<h2 style="margin-top:10px">'+typeChip(t)+esc(t.title)+'</h2>'+
+    '<p class="muted">'+esc(cls.name)+' · due '+esc(dueTxt)+(t.pts?' · '+t.pts+' pts':'')+' · '+doneN+'/'+act.length+' submitted</p>'+
+    (t.type!=='material'?'<div class="row"><button class="btn" id="tvAssign">Assign (email all)</button>'+
+      '<button class="btn soft" id="tvCopy">Copy submit link</button></div>':'')+
+    '</div>';
+  if(t.type==='question'&&t.cfg&&t.cfg.qtype!=='short'&&(t.cfg.choices||[]).length){
+    var tally={}; (t.cfg.choices||[]).forEach(function(c,i){ tally[i]=0; });
+    for(var sid in sm){ sm[sid].forEach(function(s){
+      if(s.kind==='answer'){ var m=String(s.fn||'').match(/^\[(\d+)\]/); if(m&&tally[m[1]]!=null) tally[m[1]]++; } }); }
+    htmlOut+='<div class="card"><h2>Responses</h2>'+(t.cfg.choices||[]).map(function(c,i){
+      return '<div class="item"><div class="grow">'+esc(c)+'</div><span class="muted" style="font-family:var(--mono)">'+tally[i]+'</span></div>'; }).join('')+'</div>';
+  }
+  if(t.type!=='material'){
+    htmlOut+='<div class="card"><div style="display:flex;align-items:center;gap:8px">'+
+      '<h2 style="margin-bottom:0;flex:1">Students</h2>'+
+      '<button class="btn soft sm" id="tvNudgeSel">Nudge ticked</button></div>'+
+      '<div id="tvList" style="margin-top:8px">'+
+      act.map(function(s){
+        var subs=sm[s.id];
+        var status;
+        if(subs){ var last=subs[subs.length-1];
+          var what=last.kind==='file'?('file: '+esc(last.fn||'')):last.kind==='link'?('<a href="'+esc(last.url)+'" target="_blank" rel="noopener">link</a>'):('answer: '+esc((last.fn||'').slice(0,60)));
+          if(last.kind==='file'&&last.url) what='<a href="'+esc(last.url)+'" target="_blank" rel="noopener">'+what+'</a>';
+          status='<div class="sub" style="color:var(--p)">✓ '+esc(nowD(last.ts))+' · '+what+'</div>';
+        } else status='<div class="sub" style="color:var(--a)">not submitted</div>';
+        return '<div class="item">'+(subs?'':'<input type="checkbox" class="selBox" data-nsel="'+esc(s.id)+'" checked>')+
+          '<div class="grow"><div class="nm">'+esc(s.name)+'</div>'+status+'</div>'+
+          (subs?'':'<button class="btn soft sm" data-n1="'+esc(s.id)+'">Nudge</button>')+'</div>';
+      }).join('')+'</div></div>';
+  }
+  v.innerHTML=htmlOut;
+  $('#tvBack').onclick=function(){ taskViewId=null; renderTasks(); };
+  function doNudge(sids,btn){
+    var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
+    if(!url){ toast('Set up sync first'); return; }
+    if(!sids.length){ toast('Nobody to nudge'); return; }
+    if(btn){ btn.disabled=true; }
+    fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'nudge',task:t.id,sids:sids})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ toast(j.ok?('Nudged '+j.sent+' student'+(j.sent===1?'':'s')+' by email'):'Nudge failed'); if(btn) btn.disabled=false; })
+      .catch(function(){ toast('No connection'); if(btn) btn.disabled=false; });
+  }
+  $$('#tvList [data-n1]').forEach(function(b){ b.onclick=function(){ doNudge([b.getAttribute('data-n1')],b); }; });
+  var nSel=$('#tvNudgeSel');
+  if(nSel){ nSel.onclick=function(){
+    var ids=[]; $$('#tvList [data-nsel]').forEach(function(c){ if(c.checked) ids.push(c.getAttribute('data-nsel')); });
+    doNudge(ids,nSel);
+  }; }
+  var aBtn=$('#tvAssign');
+  if(aBtn){ aBtn.onclick=function(){
+    var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
+    if(!url){ toast('Set up sync first'); return; }
+    if(!confirm('Email this task (with instructions, links, deadline, and the submit link) to every student in '+cls.name+' who has an email?')) return;
+    if(state.tasksDirty){ toast('Syncing the task first — press Assign again in a few seconds'); syncNow(); return; }
+    aBtn.disabled=true; aBtn.textContent='Sending…';
+    fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'assign',task:t.id,link:submitLinkFor(t)})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ aBtn.disabled=false; aBtn.textContent='Assign (email all)';
+        toast(j.ok?('Emailed '+j.sent+' student'+(j.sent===1?'':'s')):'Assign failed — sync first?'); })
+      .catch(function(){ aBtn.disabled=false; aBtn.textContent='Assign (email all)'; toast('No connection'); });
+  }; }
+  var cBtn=$('#tvCopy');
+  if(cBtn){ cBtn.onclick=function(){
+    if(state.tasksDirty){ toast('Sync first so the link works — press Sync now, then copy'); }
+    var L=submitLinkFor(t);
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(L).then(function(){ toast('Submit link copied'); },function(){ fallbackCopy(L); }); }
+    else fallbackCopy(L);
+  }; }
+}
+function nowD(ts){ var d=new Date(Number(ts)||Date.now()); return d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }
+function studentTasksModal(cls,stu){
+  var ts=classTasks(cls.id).filter(function(t){ return t.type==='assign'||t.type==='question'; });
+  var missing=ts.filter(function(t){ var sm=subsForTask(t.id); return !sm[stu.id]; });
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">'+esc(stu.name)+'</h2>'+
+    '<p class="muted">'+(missing.length?('Not yet submitted ('+missing.length+'):'):'All tasks submitted ✓')+'</p>'+
+    missing.map(function(t){ return '<div class="item"><div class="grow"><div class="nm">'+typeChip(t)+esc(t.title)+'</div>'+
+      '<div class="sub">'+(t.due?('due '+esc(fmtTs(t.due))):'no deadline')+'</div></div></div>'; }).join('')+
+    (missing.length?'<button class="btn" id="stNudge">Nudge for all of these</button>':'')+
+    '<button class="btn soft" id="stClose">Close</button></div>';
+  document.body.appendChild(wrap);
+  var nb=wrap.querySelector('#stNudge');
+  if(nb){ nb.onclick=function(){
+    var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
+    if(!url){ toast('Set up sync first'); return; }
+    nb.disabled=true; nb.textContent='Sending…';
+    var chain=Promise.resolve(0);
+    missing.forEach(function(t){
+      chain=chain.then(function(n){
+        return fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'nudge',task:t.id,sids:[stu.id]})})
+          .then(function(r){ return r.json(); }).then(function(j){ return n+(j.ok?j.sent:0); });
+      });
+    });
+    chain.then(function(n){ toast('Sent '+n+' reminder email'+(n===1?'':'s')); wrap.remove(); })
+      .catch(function(){ toast('No connection'); nb.disabled=false; nb.textContent='Nudge for all of these'; });
+  }; }
+  wrap.querySelector('#stClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+}
 /* ============ exports ============ */
 function expRange(){
   var f=$('#expFrom').value, t=$('#expTo').value;
@@ -4707,6 +5045,7 @@ function syncNow(auto){
   });
   var payload={t:token,ev:outEv};
   if(state.rosterDirty) payload.roster={ts:state.rosterTs,rows:rosterRows()};
+  if(state.tasksDirty) payload.tasks={ts:state.tasksTs,rows:taskRows()};
   fetch(url,{method:'POST',body:JSON.stringify(payload)})
   .then(function(r){ return r.json(); })
   .then(function(j){
@@ -4714,7 +5053,7 @@ function syncNow(auto){
     var sent={}; outEv.forEach(function(e){ sent[e.u]=1; });
     state.ev.forEach(function(e){ if(sent[e.u]) e.sy=1; });
     if(payload.roster) state.rosterDirty=false;
-    return fetch(url+'?t='+encodeURIComponent(token)+'&since='+state.lastServerTs+'&rts='+state.rosterTs)
+    return fetch(url+'?t='+encodeURIComponent(token)+'&since='+state.lastServerTs+'&rts='+state.rosterTs+'&tts='+state.tasksTs)
       .then(function(r){ return r.json(); });
   })
   .then(function(j){
@@ -4728,6 +5067,16 @@ function syncNow(auto){
     });
     if(j.roster && j.rosterTs>state.rosterTs && !state.rosterDirty){
       rebuildRoster(j.roster); state.rosterTs=j.rosterTs;
+    }
+    if(j.tasks && j.tasksTs>state.tasksTs && !state.tasksDirty){
+      rebuildTasks(j.tasks); state.tasksTs=j.tasksTs;
+    }
+    if(j.tasksTs!=null && state.tasksDirty && Number(j.tasksTs)<=state.tasksTs){ state.tasksDirty=false; }
+    if(j.subs && j.subs.length){
+      j.subs.forEach(function(x){ if(x&&x.u&&!state.subs[x.u]) state.subs[x.u]=x; });
+    }
+    if(j.gr && j.gr.length){
+      j.gr.forEach(function(x){ if(x&&x.u&&!state.gr[x.u]) state.gr[x.u]=x; });
     }
     state.lastServerTs=j.now||state.lastServerTs;
     save();
@@ -4841,6 +5190,7 @@ function initAutoBackup(){
 /* ============ wiring ============ */
 function init(){
   loadState();
+  ensureFields();
   $('#recDate').value=todayStr();
   $('#expTo').value=todayStr();
   $('#expFrom').value=todayStr().slice(0,8)+'01';
@@ -4866,6 +5216,11 @@ function init(){
 
   $('#btnAddClass').onclick=addClass;
   $('#btnEnroll').onclick=openEnroll;
+  $('#taskClass').onchange=renderTasks;
+  $('#btnNewTask').onclick=function(){ openTaskEditor(null); };
+  $$('.tabs button').forEach(function(b){
+    if(b.getAttribute('data-tab')==='tasks') b.addEventListener('click',function(){ renderTasks(); });
+  });
   $('#newClassName').onkeydown=function(e){ if(e.key==='Enter') addClass(); };
   $('#btnBackClasses').onclick=function(){ detailClassId=null; selMode=false; selSet={}; renderClassHome(); };
   $('#btnRenameClass').onclick=function(){
