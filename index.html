@@ -181,7 +181,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v4.3</span>
+  <span class="brand-sub">attendance · v4.4</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -238,6 +238,10 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
         <button class="btn ghost sm" id="btnPrintQR">Print QR cards</button>
         <button class="btn soft sm" id="btnRenameClass">Rename</button>
         <button class="btn danger sm fit" id="btnDelClass">Delete</button>
+      </div>
+      <div style="margin-top:10px">
+        <label>Class color</label>
+        <div id="colorRow" style="display:flex;gap:8px;flex-wrap:wrap"></div>
       </div>
     </div>
     <div class="card">
@@ -396,7 +400,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v4.3 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v4.4 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -3275,7 +3279,7 @@ function renderClassHome(){
     el.innerHTML='<p class="muted">No classes yet. Add your first one below, then add students.</p>'; return;
   }
   el.innerHTML=state.classes.map(function(c){
-    return '<div class="item"><div class="grow"><div class="nm">'+esc(c.name)+'</div>'+
+    return '<div class="item"'+(classColor(c)?' style="box-shadow:inset 4px 0 0 '+classColor(c)+'"':'')+'><div class="grow"><div class="nm">'+colorDot(c)+esc(c.name)+'</div>'+
       '<div class="sub">'+c.students.length+' student'+(c.students.length===1?'':'s')+'</div></div>'+
       '<button class="btn soft sm" data-open="'+esc(c.id)+'">Open</button></div>';
   }).join('');
@@ -3301,6 +3305,15 @@ function renderClassDetail(){
   $('#schedStart').onchange=function(){ saveSched(cls); };
   $('#schedEnd').onchange=function(){ saveSched(cls); };
   $('#schedGrace').onchange=function(){ saveSched(cls); };
+  var curCol=classColor(cls);
+  $('#cdName').closest('.card').style.borderTop = curCol?('5px solid '+curCol):'';
+  $('#colorRow').innerHTML=PASTELS.map(function(p){
+    var on=(p===curCol);
+    return '<button class="icon-btn" data-col="'+p+'" style="background:'+p+';border-color:'+(on?'var(--ink)':'var(--line)')+';border-width:'+(on?'2.5px':'1.5px')+'"></button>';
+  }).join('')+'<button class="icon-btn" data-col="" title="No color">×</button>';
+  $$('#colorRow [data-col]').forEach(function(b){
+    b.onclick=function(){ setClassColor(cls,b.getAttribute('data-col')); renderClassDetail(); };
+  });
   var list=$('#studentList');
   if(!cls.students.length){ list.innerHTML='<p class="muted">No students yet. Add them below or use bulk add.</p>'; }
   else{
@@ -3324,8 +3337,12 @@ function saveSched(cls){
   $$('#schedDays button').forEach(function(b){ if(b.classList.contains('on')) days.push(+b.getAttribute('data-d')); });
   var start=$('#schedStart').value, end=$('#schedEnd').value;
   var g=parseInt($('#schedGrace').value,10); if(isNaN(g)||g<0) g=15;
-  if(!days.length&&!start&&!end){ delete cls.sched; }
-  else cls.sched={days:days,start:start,end:end,grace:g};
+  var color=(cls.sched&&cls.sched.color)||'';
+  if(!days.length&&!start&&!end&&!color){ delete cls.sched; }
+  else{
+    cls.sched={days:days,start:start,end:end,grace:g};
+    if(color) cls.sched.color=color;
+  }
   touchRoster(); renderSelects();
 }
 function fmtSched(c){
@@ -3335,6 +3352,22 @@ function fmtSched(c){
     .map(function(d){ return names[d]; }).join('/');
   var t=sc.start?(' '+sc.start+(sc.end?'\u2013'+sc.end:'')):'';
   return (ds+t).trim();
+}
+var PASTELS=['#F5C6C6','#F8DCB8','#F5EFB5','#C7E8CF','#C4E2F2','#D6D0F0','#F1CDE2','#E3D9C8'];
+function classColor(c){ return (c&&c.sched&&c.sched.color)||''; }
+function setClassColor(cls,hex){
+  if(hex){
+    if(!cls.sched) cls.sched={days:[],start:'',end:'',grace:15};
+    cls.sched.color=hex;
+  } else if(cls.sched){
+    delete cls.sched.color;
+    if(!(cls.sched.days&&cls.sched.days.length)&&!cls.sched.start&&!cls.sched.end) delete cls.sched;
+  }
+  touchRoster();
+}
+function colorDot(c){
+  var col=classColor(c);
+  return col?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(0,0,0,.12);margin-right:7px"></span>':'';
 }
 function effectiveStatus(cls){
   var st=curStatus;
@@ -3558,7 +3591,7 @@ function updateScanCount(){
   if(!cls){ $('#scanCount').textContent='Add a class in Roster to start'; return; }
   var m=marksFor(id,curScanDate()), n=0;
   cls.students.forEach(function(s){ if(m[s.id]&&m[s.id].st) n++; });
-  $('#scanCount').textContent=n+' / '+cls.students.length+' marked · '+cls.name+' · today';
+  $('#scanCount').innerHTML=colorDot(cls)+n+' / '+cls.students.length+' marked · '+esc(cls.name)+' · today';
 }
 function photoDecode(file){
   if(!window.jsQR){ toast('QR library not loaded — check internet and reload'); return; }
@@ -3715,6 +3748,7 @@ function printCards(clsId, onlyId){
   var grid=area.querySelector('.qr-grid');
   studs.forEach(function(s){
     var card=document.createElement('div'); card.className='qr-card';
+    var cc=classColor(cls); if(cc) card.style.borderTop='6px solid '+cc;
     var qd=document.createElement('div');
     card.appendChild(qd);
     var nm=document.createElement('div'); nm.className='qn'; nm.textContent=s.name; card.appendChild(nm);
@@ -3808,9 +3842,11 @@ function openEnroll(){
   wrap.innerHTML='<div class="box"><h2 style="margin:0">Student enrollment link</h2>'+
     '<p class="muted">Students open the link, type their student ID (the # you gave them), confirm their name and class, and enter their email. They receive a confirmation email with their personal QR attached. One-time per student — fix mistakes with the ✎ edit.</p>'+
     '<div><label>Scope</label><select id="enClass"></select></div>'+
-    '<div><label>Link works for</label><div class="seg" id="enDur">'+
+    '<div><label for="enMins">Link stays open for (minutes)</label>'+
+      '<input type="number" id="enMins" min="15" max="10080" value="1440" inputmode="numeric">'+
+      '<div class="seg" id="enDur" style="margin-top:8px">'+
       '<button data-m="60">1 hr</button><button data-m="360">6 hrs</button>'+
-      '<button data-m="1440" class="on" style="background:var(--board);color:var(--chalk)">24 hrs</button>'+
+      '<button data-m="1440">24 hrs</button>'+
       '<button data-m="10080">7 days</button></div></div>'+
     '<button class="btn" id="enMake">Create link</button>'+
     '<div id="enOut" style="display:none"><label>Send this to your students</label>'+
@@ -3821,17 +3857,15 @@ function openEnroll(){
   document.body.appendChild(wrap);
   var sel=wrap.querySelector('#enClass');
   sel.innerHTML='<option value="ALL">All classes</option>'+state.classes.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
-  var mins=1440;
   var durBtns=Array.prototype.slice.call(wrap.querySelectorAll('#enDur button'));
   durBtns.forEach(function(b){
-    b.onclick=function(){
-      mins=Number(b.getAttribute('data-m'));
-      durBtns.forEach(function(x){ x.classList.remove('on'); x.style.background=''; x.style.color=''; });
-      b.classList.add('on'); b.style.background='var(--board)'; b.style.color='var(--chalk)';
-    };
+    b.onclick=function(){ wrap.querySelector('#enMins').value=b.getAttribute('data-m'); };
   });
   var madeLink='';
   wrap.querySelector('#enMake').onclick=function(){
+    var mins=parseInt(wrap.querySelector('#enMins').value,10);
+    if(isNaN(mins)) mins=1440;
+    mins=Math.max(15,Math.min(10080,mins));
     var btn=this; btn.disabled=true; btn.textContent='Creating…';
     fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'newsession',kind:'enroll',c:sel.value,mins:mins})})
     .then(function(r){ return r.json(); })
