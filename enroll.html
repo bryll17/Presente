@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B4F3F">
+<title>Presente — Class enrollment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --board:#0B4F3F; --chalk:#FFFDF6; --paper:#F4F5F1; --card:#FFFFFF;
+  --ink:#1B2420; --ink-soft:#5A665F; --line:#DDE2DB;
+  --p:#1E9E5A; --a:#D6453D; --dup:#8B6A00;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --body:'Public Sans',system-ui,-apple-system,sans-serif;
+  --disp:'Archivo Black','Public Sans',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--body);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.45;min-height:100vh}
+.head{background:var(--board);color:var(--chalk);padding:14px 16px;display:flex;align-items:baseline;gap:10px}
+.brand{font-family:var(--disp);font-size:20px}
+.sub{font-family:var(--mono);font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.5px}
+main{max-width:520px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+h2{font-size:17px;margin-bottom:8px}
+.muted{color:var(--ink-soft);font-size:14px}
+label{font-size:13px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:5px}
+input{font-family:var(--body);font-size:16px;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;width:100%;min-height:48px}
+.btn{display:flex;align-items:center;justify-content:center;min-height:48px;padding:10px 16px;border:1.5px solid var(--board);
+  border-radius:10px;font-weight:700;background:var(--board);color:var(--chalk);width:100%;cursor:pointer;font-size:16px;font-family:var(--body);margin-top:10px}
+.btn.soft{background:var(--card);color:var(--ink);border-color:var(--line);font-weight:600}
+.btn:disabled{opacity:.45}
+.match{border:1.5px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;display:flex;align-items:center;gap:10px}
+.match .grow{flex:1}
+.match .nm{font-weight:700}
+.match .cl{font-family:var(--mono);font-size:13px;color:var(--ink-soft)}
+.badge{font-family:var(--mono);font-size:11px;background:var(--paper);border:1px solid var(--line);border-radius:99px;padding:3px 9px;color:var(--ink-soft)}
+.pick{width:auto;min-height:42px;padding:8px 14px;margin-top:0}
+#result{border-radius:14px;padding:24px 18px;text-align:center;color:#fff;display:none;transform:rotate(-1.5deg);border:4px solid rgba(255,255,255,.55)}
+#result.show{display:block}
+#result.ok{background:var(--p)}#result.warn{background:var(--dup)}#result.err{background:var(--a)}
+#rStatus{font-family:var(--mono);font-size:13px;letter-spacing:3px;text-transform:uppercase;opacity:.9}
+#rName{font-family:var(--disp);font-size:clamp(24px,7.5vw,36px);line-height:1.05;margin:8px 0;word-break:break-word}
+#rMeta{font-family:var(--mono);font-size:13px;opacity:.92}
+#count{font-family:var(--mono);font-size:13px;color:var(--ink-soft)}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<header class="head"><span class="brand">PRESENTE</span><span class="sub">class enrollment</span></header>
+<main>
+  <div class="card" id="infoCard">
+    <h2 id="title">Loading…</h2>
+    <p class="muted" id="info">Checking this link…</p>
+    <p id="count" style="margin-top:6px"></p>
+  </div>
+
+  <div class="card hidden" id="stepId">
+    <label for="numIn">Your Student ID number</label>
+    <input id="numIn" placeholder="e.g. 21002112" autocomplete="off" autocapitalize="off" inputmode="text">
+    <button class="btn" id="btnFind">Find me</button>
+    <p class="muted" id="findMsg" style="margin-top:8px"></p>
+  </div>
+
+  <div class="card hidden" id="stepPick">
+    <h2>Is this you?</h2>
+    <div id="matches"></div>
+    <button class="btn soft" id="btnBack1">No — search again</button>
+  </div>
+
+  <div class="card hidden" id="stepEmail">
+    <h2 id="pickedName"></h2>
+    <p class="muted" id="pickedCls" style="margin-bottom:10px"></p>
+    <label for="emailIn">Your email address</label>
+    <input id="emailIn" type="email" placeholder="you@gmail.com" autocomplete="email" autocapitalize="off">
+    <p class="muted" style="margin-top:8px">Your email is saved into your class roster and used only for attendance confirmations and your personal QR code.</p>
+    <button class="btn" id="btnEnroll">Enroll me</button>
+    <button class="btn soft" id="btnBack2">Back</button>
+  </div>
+
+  <div id="result"><div id="rStatus"></div><div id="rName"></div><div id="rMeta"></div></div>
+
+  <p class="muted" style="text-align:center;margin-top:10px">If you did not do this enrollment yourself, tell your teacher immediately.</p>
+</main>
+<script>
+'use strict';
+var $=function(s){return document.querySelector(s);};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+var qs=new URLSearchParams(location.search);
+var KEY=(qs.get('k')||'').trim();
+var SURL=(qs.get('s')||'').trim();
+var clockOffset=0, expiresTs=0, curMatches=[], pickedI=-1;
+
+function show(id){
+  ['stepId','stepPick','stepEmail'].forEach(function(x){
+    $('#'+x).classList.toggle('hidden', x!==id);
+  });
+}
+function fail(title,msg){
+  $('#title').textContent=title;
+  $('#info').textContent=msg;
+  $('#count').textContent='';
+  ['stepId','stepPick','stepEmail'].forEach(function(x){ $('#'+x).classList.add('hidden'); });
+}
+function showResult(kind,status,name,meta){
+  var r=$('#result');
+  r.className=''; r.id='result'; r.classList.add('show',kind);
+  $('#rStatus').textContent=status;
+  $('#rName').textContent=name;
+  $('#rMeta').textContent=meta;
+}
+function tick(){
+  if(!expiresTs) return;
+  var left=expiresTs-(Date.now()+clockOffset);
+  if(left<=0){
+    $('#count').textContent='This link has expired.';
+    fail('Link expired','Ask your teacher for a new enrollment link.');
+    return;
+  }
+  var h=Math.floor(left/3600000), m=Math.floor((left%3600000)/60000);
+  $('#count').textContent='Link closes in '+(h>0?h+'h ':'')+m+'m';
+  setTimeout(tick,30000);
+}
+function post(payload){
+  return fetch(SURL,{method:'POST',body:JSON.stringify(payload)}).then(function(r){ return r.json(); });
+}
+
+function init(){
+  if(!KEY||!SURL||SURL.indexOf('https://')!==0){
+    fail('This link is incomplete','Ask your teacher to send the enrollment link again.');
+    return;
+  }
+  fetch(SURL+'?chk='+encodeURIComponent(KEY))
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(!j.ok||j.kind!=='enroll'){ fail('Link not recognized','Ask your teacher for a new enrollment link.'); return; }
+      clockOffset=(j.now||Date.now())-Date.now();
+      expiresTs=Number(j.exp)||0;
+      if(!j.open){ fail('Link expired','Ask your teacher for a new enrollment link.'); return; }
+      $('#title').textContent='Enrollment: '+(j.cls||'class roster');
+      $('#info').textContent='Type your Student ID exactly as your teacher wrote it, confirm your name, then enter your email.';
+      show('stepId'); tick();
+    })
+    .catch(function(){ fail('Cannot reach the enrollment system','Check your internet connection, then reload this page.'); });
+}
+
+$('#btnFind').onclick=function(){
+  var num=$('#numIn').value.trim();
+  if(!num){ $('#findMsg').textContent='Type your Student ID first.'; return; }
+  var b=this; b.disabled=true; $('#findMsg').textContent='Searching…';
+  post({op:'enlookup',k:KEY,num:num})
+  .then(function(j){
+    b.disabled=false;
+    if(!j.ok){
+      if(j.err==='notfound'){ $('#findMsg').textContent='No student with that ID was found. Check the exact format (e.g. leading zeros), or ask your teacher.'; }
+      else if(j.err==='expired'){ fail('Link expired','Ask your teacher for a new enrollment link.'); }
+      else { $('#findMsg').textContent='This link is not valid anymore — ask your teacher.'; }
+      return;
+    }
+    curMatches=j.matches||[];
+    $('#matches').innerHTML=curMatches.map(function(m){
+      return '<div class="match"><div class="grow"><div class="nm">'+esc(m.name)+'</div>'+
+        '<div class="cl">'+esc(m.cls||'')+'</div></div>'+
+        (m.enrolled?'<span class="badge">already enrolled</span>'
+                   :'<button class="btn pick" data-i="'+m.i+'">This is me</button>')+
+        '</div>';
+    }).join('');
+    Array.prototype.slice.call(document.querySelectorAll('#matches [data-i]')).forEach(function(btn){
+      btn.onclick=function(){
+        pickedI=Number(btn.getAttribute('data-i'));
+        var m=curMatches[pickedI];
+        $('#pickedName').textContent=m.name;
+        $('#pickedCls').textContent=m.cls||'';
+        show('stepEmail'); $('#emailIn').focus();
+      };
+    });
+    $('#findMsg').textContent='';
+    show('stepPick');
+  })
+  .catch(function(){ b.disabled=false; $('#findMsg').textContent='No connection — check your internet and try again.'; });
+};
+
+$('#btnBack1').onclick=function(){ show('stepId'); $('#numIn').focus(); };
+$('#btnBack2').onclick=function(){ show('stepPick'); };
+
+$('#btnEnroll').onclick=function(){
+  var email=$('#emailIn').value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(email)){ showResult('err','CHECK EMAIL','Invalid address','Type it again carefully'); return; }
+  var b=this; b.disabled=true; b.textContent='Enrolling…';
+  post({op:'enset',k:KEY,num:$('#numIn').value.trim(),i:pickedI,email:email})
+  .then(function(j){
+    if(j.ok){
+      ['stepId','stepPick','stepEmail'].forEach(function(x){ $('#'+x).classList.add('hidden'); });
+      showResult('ok','ENROLLED ✓',j.name||'Done',(j.cls?j.cls+' · ':'')+
+        (j.mailed?'Check your email (and Spam!) for your QR code.'
+                 :'Recorded — but the QR email could not send right now; ask your teacher for your code.'));
+      return;
+    }
+    b.disabled=false; b.textContent='Enroll me';
+    if(j.err==='already'){ showResult('warn','ALREADY ENROLLED',j.name||'This student','If that was not you, tell your teacher NOW.'); }
+    else if(j.err==='expired'){ fail('Link expired','Ask your teacher for a new enrollment link.'); }
+    else if(j.err==='bademail'){ showResult('err','CHECK EMAIL','Invalid address','Type it again carefully'); }
+    else { showResult('err','NOT FOUND','Try again','Search your ID once more'); }
+  })
+  .catch(function(){ b.disabled=false; b.textContent='Enroll me'; showResult('err','NO CONNECTION','Try again','Check your internet'); });
+};
+
+$('#numIn').onkeydown=function(e){ if(e.key==='Enter') $('#btnFind').click(); };
+$('#emailIn').onkeydown=function(e){ if(e.key==='Enter') $('#btnEnroll').click(); };
+init();
+</script>
+</body>
+</html>
