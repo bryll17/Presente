@@ -1,5 +1,5 @@
 /* Presente service worker — lets the app install and load offline. */
-var CACHE = 'presente-v6';
+var CACHE = 'presente-v7';
 var PRECACHE = ['./', 'manifest.json', 'icon-192.png', 'icon-512.png',
   'checkin.html', 'enroll.html', 'jsqr.js', 'qrcode.min.js', 'jspdf.umd.min.js', 'jspdf.plugin.autotable.min.js'];
 var CDN_HOSTS = ['cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];

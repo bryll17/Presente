@@ -115,6 +115,7 @@ h2{font-size:17px;font-weight:700;margin-bottom:10px}
 .chip.L{background:var(--l-bg);color:#8a6200;border-color:var(--l)}
 .chip.A{background:var(--a-bg);color:var(--a);border-color:var(--a)}
 .chip.E{background:var(--e-bg);color:var(--e);border-color:var(--e)}
+.selBox{width:22px;height:22px;accent-color:var(--board);flex:0 0 auto;margin-right:2px}
 .icon-btn{min-width:40px;min-height:40px;border-radius:9px;border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);font-size:15px;display:flex;align-items:center;justify-content:center}
 .stat-strip{display:flex;gap:8px;margin-bottom:10px}
 .stat{flex:1;text-align:center;border-radius:10px;padding:8px 4px;border:1.5px solid var(--line);background:var(--card)}
@@ -159,11 +160,18 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
   body.printing>*{display:none !important}
   body.printing #printArea{display:block !important}
   .qr-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0}
-  .qr-card{border:1.5px dashed #999;padding:6mm;text-align:center;page-break-inside:avoid;
-    height:120mm;display:flex;flex-direction:column;align-items:center;justify-content:center}
-  .qr-card .qn{font-family:var(--disp);font-size:22px;margin-top:6mm;line-height:1.15}
-  .qr-card .qc{font-family:var(--mono);font-size:13px;color:#444;margin-top:2mm}
-  .qr-card img,.qr-card canvas{width:70mm !important;height:70mm !important;margin:0 auto}
+  .qr-card{border:1.5px dashed #999;padding:0;text-align:center;page-break-inside:avoid;
+    height:120mm;display:flex;flex-direction:column;overflow:hidden}
+  .qr-head{background:#0B4F3F;color:#FFFDF6;font-family:var(--mono);font-size:10px;
+    letter-spacing:2.5px;padding:4px 0;border-bottom:3px solid #EE7A2E;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qr-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4mm}
+  .qr-frame{border:2.5px solid #EE7A2E;border-radius:3mm;padding:3mm;background:#fff;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qr-card .qn{font-family:var(--disp);font-size:21px;margin-top:4mm;line-height:1.15;color:#0B4F3F}
+  .qr-card .qc{font-family:var(--mono);font-size:12px;color:#444;margin-top:2mm}
+  .qr-foot{height:4px;background:#EE7A2E;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .qr-card img,.qr-card canvas{width:62mm !important;height:62mm !important;margin:0 auto;display:block}
   .reg-title{font-family:var(--disp);font-size:16px;margin-bottom:6px}
   table.reg{border-collapse:collapse;width:100%;font-size:10px;font-family:var(--body)}
   table.reg th,table.reg td{border:1px solid #888;padding:2px 4px;text-align:center}
@@ -181,7 +189,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v4.4</span>
+  <span class="brand-sub">attendance · v5.1</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -257,7 +265,16 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       </div>
     </div>
     <div class="card">
-      <h2>Students <span class="muted" id="cdCount"></span></h2>
+      <div style="display:flex;align-items:center;gap:8px">
+        <h2 style="margin-bottom:0;flex:1">Students <span class="muted" id="cdCount"></span></h2>
+        <button class="btn soft sm" id="btnSel">Select</button>
+      </div>
+      <div id="selBar" class="row" style="display:none;margin:10px 0 4px">
+        <button class="btn soft sm" id="selPin">Pin</button>
+        <button class="btn soft sm" id="selUnpin">Unpin</button>
+        <button class="btn soft sm" id="selArch">Archive</button>
+        <button class="btn danger sm" id="selRem">Remove</button>
+      </div>
       <div id="studentList"></div>
       <div class="row" style="margin-top:10px">
         <div><input id="stuName" placeholder="ID, Name, email — e.g. 002112, Dela Cruz, Juan"></div>
@@ -385,6 +402,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
         <li><b>Offline:</b> everything saves locally first. Marks upload automatically when you’re back online (watch the dot in the header). If both devices edit the same student’s same day, the latest change wins.</li>
         <li><b>Don’t clear this browser’s data</b> — that deletes local records. Backups exist for a reason.</li>
         <li><b>Photo mode</b> exists for devices where live camera fails: it opens the camera app, you snap the QR, it decodes the photo.</li>
+        <li><b>Archive vs Remove:</b> Archive freezes a student (QR stops, hidden from lists, restorable with the same QR). Remove is permanent — history stays in exports, but the identity dies. Use Select for bulk pin/archive/remove; pinned students sort to the top.</li>
         <li><b>Enrollment:</b> Roster tab → “Student enrollment link…” → send it out. Students type their ID (# field must be filled and match exactly), confirm their name/class, enter their email once, and receive their QR by email. Enrolled emails appear under names after a sync. To redo one student, clear their email with ✎.</li>
         <li><b>Online classes:</b> Scan tab → “Online class check-in link…” → pick class and time limit → send the link. Students scan their own QR card on that page and get marked Present with the exact time; the link dies at the deadline. They can’t see anyone’s records — only submit their own code. Marks flow into your Sheet and devices like normal scans (“self check-in”).</li>
       </ul>
@@ -400,7 +418,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v4.4 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v5.1 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -427,27 +445,38 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 <canvas id="scanCanvas" style="display:none"></canvas>
 
 <script type="text/plain" id="gsCode">
-/** Presente sync backend v6 — paste into Apps Script of a private Google Sheet.  */
+/** Presente sync backend v8.1 — paste into Apps Script of a private Google Sheet.*/
+/** (v8.1 = v8 with the teacher's own Participation Card layout; nothing else.)  */
 /** FIRST TIME:  1) Change TOKEN below.  2) Deploy > New deployment > Web app,    */
 /**    Execute as: Me / Access: Anyone.  3) Put URL + token in the app.           */
 /** UPDATING an existing deployment: replace all code with this, save, then       */
 /**    Deploy > Manage deployments > pencil > Version: New version > Deploy.      */
 /**    The URL stays the same. Remember to retype YOUR token below first.         */
-/** NEW IN v6: student self-enrollment. The app creates expiring enrollment     */
-/**    links (enroll.html). Students type their Student ID, confirm name+class,  */
-/**    and set their email ONCE; a confirmation email with their personal QR    */
-/**    (generated right here, no third-party service) is sent automatically.    */
-/**    Enrollment emails send regardless of SEND_EMAILS (which only governs     */
-/**    attendance notifications). The QR encoder is embedded at the bottom.     */
+/** NEW IN v8 (final): (a) enrollment now REQUIRES a face photo — saved into   */
+/**    Drive under "Presente Profiles", listed in the Profiles tab, and printed */
+/**    onto an emailed Participation Points Card PDF alongside the QR code.     */
+/**    (b) QR-verified submissions (by scanned student credential), including   */
+/**    Question tasks: short answer, auto-scored multiple choice (result never  */
+/**    revealed to the student), and no-score polls. (c) Assignment emails      */
+/**    ("assign" op) and automatic day-before reminders: run setupDailyReminder */
+/**    ONCE from this editor to install the 7am daily trigger, and put your app */
+/**    link into SITE below so reminder emails can include the submit page.     */
+/**    (d) Teacher's Feedback links (anonymous or identified) -> Feedback tab.  */
 var TOKEN = 'change-me-please';
 var SEND_EMAILS = false;
 var EMAIL_FROM_NAME = 'Presente Attendance';
 var TZ = 'Asia/Manila';   // change only if you teach in another timezone
+var SITE = '';            // your app link, e.g. 'https://yourname.github.io/presente/' — used in reminder emails
 
 var EV_HEAD = ['uid','ts','date','classId','studentId','name','status','via','time','device','srvTs'];
-var SESS_HEAD = ['key','classId','className','date','createdTs','expiresTs','marked','kind'];
+var SESS_HEAD = ['key','classId','className','date','createdTs','expiresTs','marked','kind','extra'];
 var RP_HEAD = ['Student ID','Name','Email','Class','Date','Time in','Mode','Tag','key (do not edit)'];
-var ROSTER_W = 7;
+var TA_HEAD = ['taskId','classId','type','title','dueTs','points','rubric','config','createdTs','flags','remindedTs'];
+var FB_HEAD = ['uid','ts','key','classId','studentId','name','text','srvTs'];
+var PF_HEAD = ['studentId','fileId','ts'];
+var SU_HEAD = ['uid','ts','taskId','studentId','name','kind','fileName','url','srvTs'];
+var GR_HEAD = ['uid','ts','taskId','studentId','scores','total','srvTs'];
+var ROSTER_W = 8;
 
 function sheets_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -458,13 +487,25 @@ function sheets_() {
   if (me.getLastRow() === 0) me.appendRow(['rosterTs', 0]);
   var se = ss.getSheetByName('Sessions') || ss.insertSheet('Sessions');
   if (se.getLastRow() === 0) se.appendRow(SESS_HEAD);
+  if (me.getLastRow() === 1) me.appendRow(['tasksTs', 0]);
+  var ta = ss.getSheetByName('Tasks') || ss.insertSheet('Tasks');
+  if (ta.getLastRow() === 0) ta.appendRow(TA_HEAD);
+  var su = ss.getSheetByName('Subs') || ss.insertSheet('Subs');
+  if (su.getLastRow() === 0) su.appendRow(SU_HEAD);
+  var gr = ss.getSheetByName('Grades') || ss.insertSheet('Grades');
+  if (gr.getLastRow() === 0) gr.appendRow(GR_HEAD);
+  if (me.getLastRow() === 2) me.appendRow(['photosTs', 0]);
+  var fb = ss.getSheetByName('Feedback') || ss.insertSheet('Feedback');
+  if (fb.getLastRow() === 0) fb.appendRow(FB_HEAD);
+  var pf = ss.getSheetByName('Profiles') || ss.insertSheet('Profiles');
+  if (pf.getLastRow() === 0) pf.appendRow(PF_HEAD);
   var rp = ss.getSheetByName('Report') || ss.insertSheet('Report');
   if (rp.getLastRow() === 0) rp.appendRow(RP_HEAD);
   else if (String(rp.getRange(1, 1).getValue()) !== RP_HEAD[0]) {
     rp.clearContents();          /* old layout: wipe; next sync rebuilds in the new format */
     rp.appendRow(RP_HEAD);
   }
-  return { ev: ev, ro: ro, me: me, se: se, rp: rp };
+  return { ev: ev, ro: ro, me: me, se: se, rp: rp, ta: ta, su: su, gr: gr, fb: fb, pf: pf };
 }
 
 function json_(o) {
@@ -491,7 +532,8 @@ function rosterMap_(s) {
     for (var i = 0; i < rows.length; i++) {
       var sid = String(rows[i][2] || '');
       if (sid) map[sid] = { clsId: String(rows[i][0] || ''), cls: String(rows[i][1] || ''),
-        name: String(rows[i][3] || ''), num: String(rows[i][4] || ''), em: String(rows[i][5] || '') };
+        name: String(rows[i][3] || ''), num: String(rows[i][4] || ''), em: String(rows[i][5] || ''),
+        fl: String(rows[i][7] || '') };
     }
   }
   return map;
@@ -585,8 +627,15 @@ function doGet(e) {
     if (!f) return json_({ ok: false, err: 'unknown' });
     var exp = Number(f.v[5]);
     return json_({ ok: true, cls: String(f.v[2] || ''), exp: exp,
-      kind: String(f.v[7] || 'chk'),
+      kind: String(f.v[7] || 'chk'), extra: String(f.v[8] || ''),
       now: Date.now(), open: Date.now() < exp });
+  }
+  if (p.sub) {
+    s = sheets_();
+    var tk0 = taskById_(s, String(p.sub));
+    if (!tk0) return json_({ ok: false, err: 'unknown' });
+    return json_({ ok: true, title: tk0.title, cls: tk0.clsName, due: tk0.due,
+      now: Date.now(), open: Date.now() < tk0.due });
   }
   if (p.t !== TOKEN) return json_({ ok: false, err: 'bad token' });
   s = sheets_();
@@ -610,6 +659,41 @@ function doGet(e) {
     var rl = s.ro.getLastRow();
     out.roster = rl > 0 ? s.ro.getRange(1, 1, rl, ROSTER_W).getValues() : [];
   }
+  var tasksTs = Number(s.me.getRange(2, 2).getValue() || 0);
+  out.tasksTs = tasksTs;
+  if (tasksTs > Number(p.tts || 0)) {
+    var tl = s.ta.getLastRow();
+    out.tasks = tl > 1 ? s.ta.getRange(2, 1, tl - 1, 11).getValues() : [];
+  }
+  out.subs = [];
+  var sl = s.su.getLastRow();
+  if (sl > 1) {
+    var sr = s.su.getRange(2, 1, sl - 1, 9).getValues();
+    for (var q = 0; q < sr.length; q++) {
+      if (Number(sr[q][8]) > since) {
+        out.subs.push({ u: String(sr[q][0]), ts: Number(sr[q][1]), task: String(sr[q][2]),
+          sid: String(sr[q][3]), n: String(sr[q][4]), kind: String(sr[q][5]),
+          fn: String(sr[q][6]), url: String(sr[q][7]) });
+      }
+    }
+  }
+  out.gr = [];
+  var gl = s.gr.getLastRow();
+  if (gl > 1) {
+    var grr = s.gr.getRange(2, 1, gl - 1, 7).getValues();
+    for (var w = 0; w < grr.length; w++) {
+      if (Number(grr[w][6]) > since) {
+        out.gr.push({ u: String(grr[w][0]), ts: Number(grr[w][1]), task: String(grr[w][2]),
+          sid: String(grr[w][3]), sc: String(grr[w][4]), total: Number(grr[w][5] || 0) });
+      }
+    }
+  }
+  var photosTs = Number(s.me.getRange(3, 2).getValue() || 0);
+  out.photosTs = photosTs;
+  if (photosTs > Number(p.pts || 0)) {
+    var pl = s.pf.getLastRow();
+    out.photos = pl > 1 ? s.pf.getRange(2, 1, pl - 1, 2).getValues() : [];
+  }
   return json_(out);
 }
 
@@ -626,6 +710,7 @@ function checkin_(body) {
     var rmap = rosterMap_(s);
     var info = rmap[sid];
     if (!info) return json_({ ok: false, err: 'unknown' });
+    if (info.fl && info.fl.indexOf('A') >= 0) return json_({ ok: false, err: 'unknown' });
     var marked = String(f.v[6] || '');
     var hits = marked ? marked.split(',') : [];
     for (var i = 0; i < hits.length; i++) {
@@ -659,12 +744,11 @@ function checkin_(body) {
 
 function newSession_(body) {
   var s = sheets_();
-  var kind = body.kind === 'enroll' ? 'enroll' : 'chk';
+  var kind = body.kind === 'enroll' ? 'enroll' : body.kind === 'fb' ? 'fb' : 'chk';
   var cid = String(body.c || '');
   if (!cid) return json_({ ok: false, err: 'no class' });
   var mins = Number(body.mins) || 30;
-  mins = kind === 'enroll' ? Math.max(15, Math.min(10080, mins))
-                           : Math.max(5, Math.min(240, mins));
+  mins = kind === 'chk' ? Math.max(5, Math.min(240, mins)) : Math.max(15, Math.min(10080, mins));
   var key = key_();
   var now = Date.now();
   var exp = now + mins * 60000;
@@ -673,7 +757,9 @@ function newSession_(body) {
     var cmap = classMap_(s);
     cname = (cmap[cid] && cmap[cid].name) || '';
   }
-  s.se.appendRow([key, cid, cname, nowDate_(), now, exp, '', kind]);
+  var extra = '';
+  if (kind === 'fb') extra = JSON.stringify({ q: String(body.topic || 'Feedback'), anon: body.anon ? 1 : 0 });
+  s.se.appendRow([key, cid, cname, nowDate_(), now, exp, '', kind, extra]);
   return json_({ ok: true, key: key, exp: exp });
 }
 
@@ -696,10 +782,11 @@ function enrollMatches_(s, sess, num) {
     var sid = String(rows[i][2] || '');
     if (!sid) continue;
     if (scope && scope !== 'ALL' && String(rows[i][0]) !== scope) continue;
+    if (String(rows[i][7] || '').indexOf('A') >= 0) continue;
     if (String(rows[i][4] || '').trim().toLowerCase() !== want) continue;
     out.push({ row: i + 1, cid: String(rows[i][0] || ''), sid: sid,
       name: String(rows[i][3] || ''), cls: String(rows[i][1] || ''),
-      em: String(rows[i][5] || '') });
+      numTxt: String(rows[i][4] || ''), em: String(rows[i][5] || '') });
   }
   out.sort(function (a, b) {
     var x = a.cid + '|' + a.sid, y = b.cid + '|' + b.sid;
@@ -720,7 +807,7 @@ function enrollLookup_(body) {
 }
 function enrollSet_(body) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
   try {
     var s = sheets_();
     var f = enrollSession_(s, body);
@@ -732,28 +819,62 @@ function enrollSet_(body) {
     if (pick.em) return json_({ ok: false, err: 'already', name: pick.name });
     var email = String(body.email || '').trim();
     if (!/^\S+@\S+\.\S+$/.test(email)) return json_({ ok: false, err: 'bademail' });
+    var pb64 = String(body.pb64 || '');
+    if (!pb64) return json_({ ok: false, err: 'nophoto' });
+    if (pb64.length > 4000000) return json_({ ok: false, err: 'toobig' });
+    var pmime = String(body.pmime || 'image/jpeg');
+    /* save the photo to Drive + Profiles */
+    var pblob = Utilities.newBlob(Utilities.base64Decode(pb64), pmime,
+      pick.name.replace(/[^\w\- ]+/g, '') + '.jpg');
+    var proot = childFolder_(DriveApp.getRootFolder(), 'Presente Profiles');
+    var pcf = childFolder_(proot, pick.cls || 'Class');
+    var pfile = pcf.createFile(pblob);
+    try { pfile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (se) {}
+    var fid = pfile.getId();
+    var found = 0;
+    var pl = s.pf.getLastRow();
+    if (pl > 1) {
+      var prows = s.pf.getRange(2, 1, pl - 1, 1).getValues();
+      for (var pi = 0; pi < prows.length; pi++) {
+        if (String(prows[pi][0]) === pick.sid) {
+          s.pf.getRange(pi + 2, 2).setValue(fid);
+          s.pf.getRange(pi + 2, 3).setValue(Date.now());
+          found = 1; break;
+        }
+      }
+    }
+    if (!found) s.pf.appendRow([pick.sid, fid, Date.now()]);
+    s.me.getRange(3, 2).setValue(Date.now());
+    /* record the email */
     s.ro.getRange(pick.row, 6).setValue(email);
     s.me.getRange(1, 2).setValue(Date.now());
+    /* build attachments: QR + participation card */
     var mailed = false;
     try {
       var qr = qrcode(0, 'M');
       qr.addData('P1|' + pick.cid + '|' + pick.sid);
       qr.make();
       var dataUrl = qr.createDataURL(10, 8);
-      var blob = Utilities.newBlob(
+      var qrBlob = Utilities.newBlob(
         Utilities.base64Decode(dataUrl.split(',')[1]), 'image/gif',
         'presente-qr-' + pick.name.replace(/[^\w\- ]+/g, '') + '.gif');
+      var atts = [qrBlob];
+      try {
+        var card = buildCardPdf_(pick.name, pick.numTxt || '', pick.cls || '',
+          'data:' + pmime + ';base64,' + pb64);
+        if (card) atts.push(card);
+      } catch (ce) {}
       MailApp.sendEmail({
         to: email,
         name: EMAIL_FROM_NAME,
         subject: 'Enrolled: ' + pick.name + ' — ' + (pick.cls || 'class roster'),
         body: 'Hi ' + pick.name + ',\n\nYou are enrolled in ' + (pick.cls || 'your class') +
-              ' on Presente.\n\nAttached is your personal QR code. Save it or screenshot it — ' +
-              'you will use it every day for attendance (at the door and for online check-ins). ' +
-              'Do not share it: anyone holding it can answer attendance as you.\n\n' +
+              ' on Presente.\n\nAttached: (1) your personal QR code — used every day for attendance ' +
+              'and for verifying your task submissions, and (2) your Participation Points Card with your photo. ' +
+              'Save both; do not share your QR — anyone holding it can act as you.\n\n' +
               'If you did NOT do this enrollment, tell your teacher immediately.\n\n' +
               '— Presente (automated, do not reply)',
-        attachments: [blob]
+        attachments: atts
       });
       mailed = true;
     } catch (mailErr) {}
@@ -762,15 +883,20 @@ function enrollSet_(body) {
     lock.releaseLock();
   }
 }
-
 function doPost(e) {
   var body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, err: 'bad json' }); }
   if (body.op === 'chk') return checkin_(body);
   if (body.op === 'enlookup') return enrollLookup_(body);
   if (body.op === 'enset') return enrollSet_(body);
+  if (body.op === 'sublookup') return subLookup_(body);
+  if (body.op === 'subput') return subPut_(body);
+  if (body.op === 'subwho') return subWho_(body);
+  if (body.op === 'fbput') return fbPut_(body);
   if (body.t !== TOKEN) return json_({ ok: false, err: 'bad token' });
   if (body.op === 'newsession') return newSession_(body);
+  if (body.op === 'nudge') return nudge_(body);
+  if (body.op === 'assign') return assign_(body);
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -803,6 +929,45 @@ function doPost(e) {
       var rows = body.roster.rows || [];
       if (rows.length) s.ro.getRange(1, 1, rows.length, ROSTER_W).setValues(rows);
       s.me.getRange(1, 2).setValue(Number(body.roster.ts));
+    }
+    if (body.tasks && Number(body.tasks.ts) > Number(s.me.getRange(2, 2).getValue() || 0)) {
+      s.ta.clearContents();
+      s.ta.appendRow(TA_HEAD);
+      var trows = body.tasks.rows || [];
+      if (trows.length) s.ta.getRange(2, 1, trows.length, 11).setValues(trows);
+      s.me.getRange(2, 2).setValue(Number(body.tasks.ts));
+    }
+    if (body.gr && body.gr.length) {
+      var gh = {};
+      var gl2 = s.gr.getLastRow();
+      if (gl2 > 1) {
+        var gu = s.gr.getRange(2, 1, gl2 - 1, 1).getValues();
+        for (var g1 = 0; g1 < gu.length; g1++) gh[String(gu[g1][0])] = 1;
+      }
+      var ga = [], gnow = Date.now();
+      for (var g2 = 0; g2 < body.gr.length; g2++) {
+        var gv = body.gr[g2];
+        if (gh[gv.u]) continue;
+        ga.push([gv.u, gv.ts, gv.task, gv.sid, gv.sc || '', gv.total || 0, gnow]);
+        gh[gv.u] = 1;
+      }
+      if (ga.length) s.gr.getRange(s.gr.getLastRow() + 1, 1, ga.length, 7).setValues(ga);
+    }
+    if (body.subs && body.subs.length) {
+      var sh = {};
+      var sl2 = s.su.getLastRow();
+      if (sl2 > 1) {
+        var suu = s.su.getRange(2, 1, sl2 - 1, 1).getValues();
+        for (var s1 = 0; s1 < suu.length; s1++) sh[String(suu[s1][0])] = 1;
+      }
+      var sa = [], snow = Date.now();
+      for (var s2 = 0; s2 < body.subs.length; s2++) {
+        var sv = body.subs[s2];
+        if (sh[sv.u]) continue;
+        sa.push([sv.u, sv.ts, sv.task, sv.sid, sv.n || '', sv.kind || 'manual', sv.fn || '', sv.url || '', snow]);
+        sh[sv.u] = 1;
+      }
+      if (sa.length) s.su.getRange(s.su.getLastRow() + 1, 1, sa.length, 9).setValues(sa);
     }
     reportUpsert_(s, newEvents);
     if (SEND_EMAILS && newEvents.length) {
@@ -837,6 +1002,332 @@ function doPost(e) {
   }
 }
 
+
+/* ---------- task system (used by the app's Tasks features) ---------- */
+function taskById_(s, id) {
+  var tl = s.ta.getLastRow();
+  if (tl < 2 || !id) return null;
+  var rows = s.ta.getRange(2, 1, tl - 1, 11).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === id) {
+      var cm = classMap_(s);
+      var cid = String(rows[i][1] || '');
+      var cfg = null;
+      try { cfg = rows[i][7] ? JSON.parse(String(rows[i][7])) : null; } catch (e) {}
+      return { id: id, cid: cid, type: String(rows[i][2] || 'assign'),
+        title: String(rows[i][3] || ''), due: Number(rows[i][4] || 0),
+        points: Number(rows[i][5] || 0), rubric: String(rows[i][6] || ''),
+        config: cfg || {}, row: i + 2,
+        clsName: (cm[cid] && cm[cid].name) || '' };
+    }
+  }
+  return null;
+}
+function subMatches_(s, task, num) {
+  var out = [];
+  var rl = s.ro.getLastRow();
+  var want = String(num || '').trim().toLowerCase();
+  if (rl < 1 || !want) return out;
+  var rows = s.ro.getRange(1, 1, rl, ROSTER_W).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var sid = String(rows[i][2] || '');
+    if (!sid) continue;
+    if (String(rows[i][0]) !== task.cid) continue;
+    if (String(rows[i][7] || '').indexOf('A') >= 0) continue;
+    if (String(rows[i][4] || '').trim().toLowerCase() !== want) continue;
+    out.push({ sid: sid, name: String(rows[i][3] || '') });
+  }
+  out.sort(function (a, b) { return a.sid < b.sid ? -1 : 1; });
+  return out.slice(0, 6);
+}
+function hasSub_(s, taskId, sid) {
+  var sl = s.su.getLastRow();
+  if (sl < 2) return false;
+  var rows = s.su.getRange(2, 3, sl - 1, 2).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]) === taskId && String(rows[i][1]) === sid) return true;
+  }
+  return false;
+}
+function subLookup_(body) {
+  var s = sheets_();
+  var tk = taskById_(s, String(body.task || ''));
+  if (!tk) return json_({ ok: false, err: 'unknown' });
+  if (Date.now() > tk.due) return json_({ ok: false, err: 'closed' });
+  var m = subMatches_(s, tk, body.num);
+  if (!m.length) return json_({ ok: false, err: 'notfound' });
+  return json_({ ok: true, matches: m.map(function (x, i) {
+    return { i: i, name: x.name, submitted: hasSub_(s, tk.id, x.sid) };
+  }) });
+}
+function childFolder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+function subPut_(body) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var s = sheets_();
+    var tk = taskById_(s, String(body.task || ''));
+    if (!tk) return json_({ ok: false, err: 'unknown' });
+    if (tk.type === 'material' || tk.type === 'topic') return json_({ ok: false, err: 'unknown' });
+    if (Date.now() > tk.due) return json_({ ok: false, err: 'closed' });
+    var sid = String(body.sid || '').trim();
+    var rmap = rosterMap_(s);
+    var info = rmap[sid];
+    if (!info || info.clsId !== tk.cid) return json_({ ok: false, err: 'notfound' });
+    if (info.fl && info.fl.indexOf('A') >= 0) return json_({ ok: false, err: 'notfound' });
+    var kind = String(body.kind || 'file');
+    var url = '', fname = '';
+    if (kind === 'link') {
+      url = String(body.link || '').trim();
+      if (url.indexOf('http') !== 0) return json_({ ok: false, err: 'badlink' });
+    } else if (kind === 'answer') {
+      if (tk.config && (tk.config.qtype === 'mc' || tk.config.qtype === 'poll')) {
+        var idx = Number(body.choice);
+        var ch = (tk.config.choices || [])[idx];
+        if (ch == null) return json_({ ok: false, err: 'noanswer' });
+        fname = '[' + idx + '] ' + String(ch);
+        if (tk.config.qtype === 'mc' && tk.config.key != null) {
+          var ts0 = Date.now();
+          var correct = Number(tk.config.key) === idx;
+          s.gr.appendRow(['ag' + ts0.toString(36) + key_().slice(0, 4), ts0, tk.id, sid,
+            JSON.stringify({ auto: 1, ans: idx }), correct ? Number(tk.points || 0) : 0, ts0]);
+        }
+      } else {
+        fname = String(body.ans || '').slice(0, 500);
+        if (!fname) return json_({ ok: false, err: 'noanswer' });
+      }
+    } else {
+      var b64 = String(body.b64 || '');
+      if (!b64) return json_({ ok: false, err: 'nofile' });
+      if (b64.length > 14000000) return json_({ ok: false, err: 'toobig' });
+      fname = String(body.fname || 'file').replace(/[\\\/:*?"<>|]+/g, '_');
+      var blob = Utilities.newBlob(Utilities.base64Decode(b64),
+        String(body.mime || 'application/octet-stream'), fname);
+      var root = childFolder_(DriveApp.getRootFolder(), 'Presente Submissions');
+      var cf = childFolder_(root, tk.clsName || 'Class');
+      var tf = childFolder_(cf, (tk.title || 'Task').slice(0, 60));
+      var file = tf.createFile(blob);
+      file.setName(info.name + ' — ' + fname);
+      url = file.getUrl();
+    }
+    var ts = Date.now();
+    var uid = 'sb' + ts.toString(36) + key_().slice(0, 6);
+    s.su.appendRow([uid, ts, tk.id, sid, info.name, kind, fname, url, ts]);
+    return json_({ ok: true, name: info.name, tm: nowTime_() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+function subWho_(body) {
+  var s = sheets_();
+  var tk = taskById_(s, String(body.task || ''));
+  if (!tk) return json_({ ok: false, err: 'unknown' });
+  if (Date.now() > tk.due) return json_({ ok: false, err: 'closed' });
+  var sid = String(body.sid || '').trim();
+  var rmap = rosterMap_(s);
+  var info = rmap[sid];
+  if (!info || info.clsId !== tk.cid) return json_({ ok: false, err: 'notfound' });
+  if (info.fl && info.fl.indexOf('A') >= 0) return json_({ ok: false, err: 'notfound' });
+  return json_({ ok: true, name: info.name, submitted: hasSub_(s, tk.id, sid),
+    type: tk.type, qtype: (tk.config && tk.config.qtype) || '', title: tk.title });
+}
+function nudge_(body) {
+  var s = sheets_();
+  var tk = taskById_(s, String(body.task || ''));
+  if (!tk) return json_({ ok: false, err: 'unknown' });
+  var sids = body.sids || [];
+  var rmap = rosterMap_(s);
+  var dueTxt = Utilities.formatDate(new Date(tk.due), TZ, 'EEE, MMM d, yyyy h:mm a');
+  var sent = 0, quota = 0;
+  try { quota = MailApp.getRemainingDailyQuota(); } catch (e0) { quota = 0; }
+  for (var i = 0; i < sids.length && quota > 0; i++) {
+    var info = rmap[String(sids[i])];
+    if (!info || !info.em || info.em.indexOf('@') < 1) continue;
+    try {
+      MailApp.sendEmail({
+        to: info.em,
+        name: EMAIL_FROM_NAME,
+        subject: 'Reminder: ' + tk.title + ' — due ' + dueTxt,
+        body: 'Hi ' + info.name + ',\n\nThis is a reminder that you have not yet submitted:\n\n' +
+              '  ' + tk.title + (tk.clsName ? '  (' + tk.clsName + ')' : '') + '\n' +
+              '  Deadline: ' + dueTxt + '\n\n' +
+              'Please submit through the link your teacher shared before the deadline.\n\n' +
+              '— Presente (automated, do not reply)'
+      });
+      sent++; quota--;
+    } catch (e1) { quota = 0; }
+  }
+  return json_({ ok: true, sent: sent });
+}
+
+/* ---------- participation card, feedback, assignment emails, reminders ---------- */
+function escHtml_(t) {
+  return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function buildCardPdf_(name, num, cls, dataUri) {
+  var html = '<html><head><meta charset="utf-8"><style>' +
+    '@page{size:A4 landscape;margin:8mm}' +
+    'body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;color:#111}' +
+    '.top{width:100%;border-collapse:collapse;margin-bottom:12px}' +
+    '.ph{width:120px;vertical-align:top}' +
+    '.ph img{width:110px;height:140px;object-fit:cover;border:2px solid #888;border-radius:10px}' +
+    '.inf{vertical-align:top;padding-left:16px}' +
+    '.inf table{border-collapse:collapse}' +
+    '.lb{font-weight:bold;font-size:15px;padding:6px 10px 2px 0;white-space:nowrap;vertical-align:bottom}' +
+    '.vl{font-size:15px;min-width:420px;border-bottom:2px solid #111;padding:6px 4px 2px;vertical-align:bottom}' +
+    '.tally{width:100%;border-collapse:collapse}' +
+    '.tally th{font-size:15px;font-weight:bold;padding:8px 0;border:2px solid #111}' +
+    '.h1{background:#21B573;color:#fff}' +
+    '.h3{background:#DEB88C;color:#1b1b1b}' +
+    '.h5{background:#ADADAD;color:#1b1b1b}' +
+    '.tally td{border:2px solid #111;height:520px;width:33.33%;vertical-align:top}' +
+    '</style></head><body>' +
+    '<table class="top"><tr>' +
+    '<td class="ph"><img src="' + dataUri + '"></td>' +
+    '<td class="inf"><table>' +
+    '<tr><td class="lb">Name:</td><td class="vl">' + escHtml_(name) + '</td></tr>' +
+    '<tr><td class="lb">ID #:</td><td class="vl">' + escHtml_(num || '') + '</td></tr>' +
+    '<tr><td class="lb">Class:</td><td class="vl">' + escHtml_(cls || '') + '</td></tr>' +
+    '</table></td></tr></table>' +
+    '<table class="tally">' +
+    '<tr><th class="h1">1 pt (Green)</th><th class="h3">3 pts (Beige)</th><th class="h5">5 pts (Gray)</th></tr>' +
+    '<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+    '</table>' +
+    '</body></html>';
+  var blob = Utilities.newBlob(html, 'text/html', 'card.html');
+  return blob.getAs('application/pdf').setName('participation-card-' +
+    String(name).replace(/[^\w\- ]+/g, '') + '.pdf');
+}
+function fbPut_(body) {
+  var s = sheets_();
+  var f = findSession_(s, String(body.k || ''));
+  if (!f) return json_({ ok: false, err: 'unknown' });
+  if (String(f.v[7] || '') !== 'fb') return json_({ ok: false, err: 'unknown' });
+  if (Date.now() > Number(f.v[5])) return json_({ ok: false, err: 'expired' });
+  var extra = {};
+  try { extra = JSON.parse(String(f.v[8] || '{}')); } catch (e) {}
+  var text = String(body.text || '').trim().slice(0, 4000);
+  if (!text) return json_({ ok: false, err: 'notext' });
+  var sid = '', name = '';
+  if (!extra.anon) {
+    sid = String(body.sid || '').trim();
+    var rmap = rosterMap_(s);
+    var info = rmap[sid];
+    if (!info) return json_({ ok: false, err: 'notfound' });
+    if (info.fl && info.fl.indexOf('A') >= 0) return json_({ ok: false, err: 'notfound' });
+    var scope = String(f.v[1] || '');
+    if (scope && scope !== 'ALL' && info.clsId !== scope) return json_({ ok: false, err: 'notfound' });
+    name = info.name;
+  }
+  var ts = Date.now();
+  s.fb.appendRow(['fb' + ts.toString(36) + key_().slice(0, 4), ts,
+    String(f.v[0]), String(f.v[1] || ''), sid, name, text, ts]);
+  return json_({ ok: true, anon: extra.anon ? 1 : 0 });
+}
+function assign_(body) {
+  var s = sheets_();
+  var tk = taskById_(s, String(body.task || ''));
+  if (!tk) return json_({ ok: false, err: 'unknown' });
+  var link = String(body.link || '');
+  var dueTxt = tk.due ? Utilities.formatDate(new Date(tk.due), TZ, 'EEE, MMM d, yyyy h:mm a') : '';
+  var instr = (tk.config && tk.config.html) ? String(tk.config.html) : '';
+  var links = (tk.config && tk.config.links) || [];
+  var li = '';
+  for (var i = 0; i < links.length; i++) {
+    li += '<li><a href="' + escHtml_(links[i]) + '">' + escHtml_(links[i]) + '</a></li>';
+  }
+  var htmlBody = '<div style="font-family:Arial,sans-serif;max-width:620px">' +
+    '<h2 style="color:#0B4F3F;border-bottom:3px solid #EE7A2E;padding-bottom:6px">' +
+    escHtml_(tk.title) + '</h2>' +
+    '<p><b>Class:</b> ' + escHtml_(tk.clsName) +
+    (tk.points ? ' &nbsp;·&nbsp; <b>Points:</b> ' + tk.points : '') +
+    (dueTxt ? ' &nbsp;·&nbsp; <b>Due:</b> ' + dueTxt : '') + '</p>' +
+    (instr ? '<div style="border-left:4px solid #0B4F3F;padding-left:12px">' + instr + '</div>' : '') +
+    (li ? '<p><b>Attached links:</b></p><ul>' + li + '</ul>' : '') +
+    (link ? '<p style="margin-top:16px"><a href="' + escHtml_(link) +
+      '" style="background:#0B4F3F;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Open the submission page</a></p>' : '') +
+    '<p style="color:#5A665F;font-size:12px">You will need your Presente QR code to submit. — Presente (automated, do not reply)</p></div>';
+  var plain = tk.title + (dueTxt ? ' — due ' + dueTxt : '') + (link ? '\nSubmit: ' + link : '');
+  var rl = s.ro.getLastRow();
+  var sent = 0, quota = 0;
+  try { quota = MailApp.getRemainingDailyQuota(); } catch (e0) { quota = 0; }
+  if (rl > 0 && quota > 0) {
+    var rows = s.ro.getRange(1, 1, rl, ROSTER_W).getValues();
+    for (var r2 = 0; r2 < rows.length && quota > 0; r2++) {
+      if (String(rows[r2][0]) !== tk.cid) continue;
+      if (String(rows[r2][7] || '').indexOf('A') >= 0) continue;
+      var em = String(rows[r2][5] || '');
+      if (em.indexOf('@') < 1) continue;
+      try {
+        MailApp.sendEmail({ to: em, name: EMAIL_FROM_NAME,
+          subject: '[' + tk.clsName + '] New task: ' + tk.title + (dueTxt ? ' — due ' + dueTxt : ''),
+          body: plain, htmlBody: htmlBody });
+        sent++; quota--;
+      } catch (e1) { quota = 0; }
+    }
+  }
+  return json_({ ok: true, sent: sent });
+}
+function dailyReminder() {
+  var s = sheets_();
+  var now = Date.now();
+  var tl = s.ta.getLastRow();
+  if (tl < 2) return;
+  var tasks = s.ta.getRange(2, 1, tl - 1, 11).getValues();
+  var sl = s.su.getLastRow();
+  var subMap = {};
+  if (sl > 1) {
+    var srows = s.su.getRange(2, 3, sl - 1, 2).getValues();
+    for (var i = 0; i < srows.length; i++) {
+      subMap[String(srows[i][0]) + '|' + String(srows[i][1])] = 1;
+    }
+  }
+  var roster = [];
+  var rl = s.ro.getLastRow();
+  if (rl > 0) roster = s.ro.getRange(1, 1, rl, ROSTER_W).getValues();
+  var quota = 0;
+  try { quota = MailApp.getRemainingDailyQuota(); } catch (e0) { quota = 0; }
+  for (var t = 0; t < tasks.length && quota > 0; t++) {
+    var type = String(tasks[t][2] || '');
+    if (type !== 'assign' && type !== 'question') continue;
+    var due = Number(tasks[t][4] || 0);
+    if (!(due > now && due <= now + 26 * 3600000)) continue;
+    if (String(tasks[t][10] || '')) continue;
+    var tid = String(tasks[t][0]);
+    var cid = String(tasks[t][1]);
+    var title = String(tasks[t][3] || '');
+    var dueTxt = Utilities.formatDate(new Date(due), TZ, 'EEE, MMM d, yyyy h:mm a');
+    for (var r3 = 0; r3 < roster.length && quota > 0; r3++) {
+      if (String(roster[r3][0]) !== cid) continue;
+      if (String(roster[r3][7] || '').indexOf('A') >= 0) continue;
+      var sid2 = String(roster[r3][2] || '');
+      if (!sid2 || subMap[tid + '|' + sid2]) continue;
+      var em2 = String(roster[r3][5] || '');
+      if (em2.indexOf('@') < 1) continue;
+      try {
+        MailApp.sendEmail({ to: em2, name: EMAIL_FROM_NAME,
+          subject: 'Due tomorrow: ' + title + ' — ' + dueTxt,
+          body: 'Hi ' + String(roster[r3][3] || '') + ',\n\nReminder: you have not yet submitted\n\n  ' +
+                title + '\n  Deadline: ' + dueTxt + '\n\n' +
+                (SITE ? 'Submit here: ' + SITE + 'submit.html?task=' + tid + '\n\n' :
+                 'Submit through the link your teacher shared.\n\n') +
+                '— Presente (automated, do not reply)' });
+        quota--;
+      } catch (e2) { quota = 0; }
+    }
+    s.ta.getRange(t + 2, 11).setValue(Date.now());
+  }
+}
+function setupDailyReminder() {
+  var trs = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < trs.length; i++) {
+    if (trs[i].getHandlerFunction() === 'dailyReminder') ScriptApp.deleteTrigger(trs[i]);
+  }
+  ScriptApp.newTrigger('dailyReminder').timeBased().everyDays(1).atHour(7).create();
+}
 
 /* ================================================================ */
 /* Embedded QR encoder (qrcode-generator, MIT, Kazuhiko Arase)      */
@@ -3217,7 +3708,13 @@ function save(){
 }
 function getClass(id){ for(var i=0;i<state.classes.length;i++) if(state.classes[i].id===id) return state.classes[i]; return null; }
 function sortedStudents(cls){
-  return cls.students.slice().sort(function(a,b){ return a.name.localeCompare(b.name); });
+  return cls.students.filter(function(s){ return !s.ar; }).sort(function(a,b){
+    if(!!a.pin!==!!b.pin) return a.pin?-1:1;
+    return a.name.localeCompare(b.name);
+  });
+}
+function archivedStudents(cls){
+  return cls.students.filter(function(s){ return !!s.ar; }).sort(function(a,b){ return a.name.localeCompare(b.name); });
 }
 function touchRoster(){ state.rosterTs=Date.now(); state.rosterDirty=true; save(); requestSync(); }
 
@@ -3266,7 +3763,7 @@ function renderSelects(){
   fillClassSelect($('#recClass'),false);
   fillClassSelect($('#expClass'),false);
 }
-var detailClassId=null;
+var detailClassId=null, selMode=false, selSet={};
 function renderRoster(){
   if(detailClassId && getClass(detailClassId)) renderClassDetail();
   else { detailClassId=null; renderClassHome(); }
@@ -3284,7 +3781,7 @@ function renderClassHome(){
       '<button class="btn soft sm" data-open="'+esc(c.id)+'">Open</button></div>';
   }).join('');
   $$('#classList [data-open]').forEach(function(b){
-    b.onclick=function(){ detailClassId=b.getAttribute('data-open'); renderClassDetail(); };
+    b.onclick=function(){ detailClassId=b.getAttribute('data-open'); selMode=false; selSet={}; renderClassDetail(); };
   });
 }
 function renderClassDetail(){
@@ -3292,7 +3789,7 @@ function renderClassDetail(){
   $('#classHome').style.display='none';
   $('#classDetail').style.display='block';
   $('#cdName').textContent=cls.name;
-  $('#cdCount').textContent='· '+cls.students.length;
+  $('#cdCount').textContent='· '+sortedStudents(cls).length;
   var sc=cls.sched||{};
   $$('#schedDays button').forEach(function(b){
     var d=+b.getAttribute('data-d');
@@ -3315,70 +3812,36 @@ function renderClassDetail(){
     b.onclick=function(){ setClassColor(cls,b.getAttribute('data-col')); renderClassDetail(); };
   });
   var list=$('#studentList');
-  if(!cls.students.length){ list.innerHTML='<p class="muted">No students yet. Add them below or use bulk add.</p>'; }
+  var act=sortedStudents(cls), arch=archivedStudents(cls);
+  $('#btnSel').textContent=selMode?'Cancel':'Select';
+  $('#selBar').style.display=selMode?'flex':'none';
+  if(!act.length&&!arch.length){ list.innerHTML='<p class="muted">No students yet. Add them below or use bulk add.</p>'; }
   else{
-    list.innerHTML=sortedStudents(cls).map(function(s){
+    list.innerHTML=act.map(function(s){
       var sub=[s.num?'#'+s.num:'',s.em||''].filter(Boolean).join(' · ');
-      return '<div class="item"><div class="grow"><div class="nm">'+esc(s.name)+'</div>'+
-        (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+
+      var box=selMode?'<input type="checkbox" class="selBox" data-sel="'+esc(s.id)+'"'+(selSet[s.id]?' checked':'')+'>':'';
+      var icons=selMode?'':(
         '<button class="icon-btn" title="Show QR" data-qr="'+esc(s.id)+'">▣</button>'+
         '<button class="icon-btn" title="Move to another class" data-mv="'+esc(s.id)+'">⇄</button>'+
         '<button class="icon-btn" title="Edit" data-ed="'+esc(s.id)+'">✎</button>'+
-        '<button class="icon-btn" title="Remove" data-rm="'+esc(s.id)+'">✕</button></div>';
+        '<button class="icon-btn" title="Remove" data-rm="'+esc(s.id)+'">✕</button>');
+      return '<div class="item">'+box+'<div class="grow"><div class="nm">'+(s.pin?'📌 ':'')+esc(s.name)+'</div>'+
+        (sub?'<div class="sub">'+esc(sub)+'</div>':'')+'</div>'+icons+'</div>';
     }).join('');
+    if(arch.length){
+      list.innerHTML+='<details style="margin-top:10px"><summary>Archived ('+arch.length+')</summary><div class="d-body">'+
+        arch.map(function(s){
+          return '<div class="item"><div class="grow"><div class="nm" style="color:var(--ink-soft)">'+esc(s.name)+'</div></div>'+
+            '<button class="btn soft sm" data-un="'+esc(s.id)+'">Restore</button></div>';
+        }).join('')+'</div></details>';
+    }
+    $$('#studentList [data-sel]').forEach(function(b){ b.onchange=function(){ if(b.checked) selSet[b.getAttribute('data-sel')]=1; else delete selSet[b.getAttribute('data-sel')]; }; });
+    $$('#studentList [data-un]').forEach(function(b){ b.onclick=function(){ var s=findStu(cls,b.getAttribute('data-un')); if(s){ s.ar=false; touchRoster(); renderClassDetail(); } }; });
     $$('#studentList [data-ed]').forEach(function(b){ b.onclick=function(){ editStudent(cls, b.getAttribute('data-ed')); }; });
     $$('#studentList [data-mv]').forEach(function(b){ b.onclick=function(){ openMove(cls, b.getAttribute('data-mv')); }; });
     $$('#studentList [data-rm]').forEach(function(b){ b.onclick=function(){ removeStudent(cls, b.getAttribute('data-rm')); }; });
     $$('#studentList [data-qr]').forEach(function(b){ b.onclick=function(){ showOneQR(cls, b.getAttribute('data-qr')); }; });
   }
-}
-function saveSched(cls){
-  var days=[];
-  $$('#schedDays button').forEach(function(b){ if(b.classList.contains('on')) days.push(+b.getAttribute('data-d')); });
-  var start=$('#schedStart').value, end=$('#schedEnd').value;
-  var g=parseInt($('#schedGrace').value,10); if(isNaN(g)||g<0) g=15;
-  var color=(cls.sched&&cls.sched.color)||'';
-  if(!days.length&&!start&&!end&&!color){ delete cls.sched; }
-  else{
-    cls.sched={days:days,start:start,end:end,grace:g};
-    if(color) cls.sched.color=color;
-  }
-  touchRoster(); renderSelects();
-}
-function fmtSched(c){
-  var sc=c.sched; if(!sc||(!sc.start&&!(sc.days&&sc.days.length))) return '';
-  var names=['Su','M','T','W','Th','F','Sa'];
-  var ds=(sc.days||[]).slice().sort(function(a,b){ return ((a+6)%7)-((b+6)%7); })
-    .map(function(d){ return names[d]; }).join('/');
-  var t=sc.start?(' '+sc.start+(sc.end?'\u2013'+sc.end:'')):'';
-  return (ds+t).trim();
-}
-var PASTELS=['#F5C6C6','#F8DCB8','#F5EFB5','#C7E8CF','#C4E2F2','#D6D0F0','#F1CDE2','#E3D9C8'];
-function classColor(c){ return (c&&c.sched&&c.sched.color)||''; }
-function setClassColor(cls,hex){
-  if(hex){
-    if(!cls.sched) cls.sched={days:[],start:'',end:'',grace:15};
-    cls.sched.color=hex;
-  } else if(cls.sched){
-    delete cls.sched.color;
-    if(!(cls.sched.days&&cls.sched.days.length)&&!cls.sched.start&&!cls.sched.end) delete cls.sched;
-  }
-  touchRoster();
-}
-function colorDot(c){
-  var col=classColor(c);
-  return col?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(0,0,0,.12);margin-right:7px"></span>':'';
-}
-function effectiveStatus(cls){
-  var st=curStatus;
-  var sc=cls&&cls.sched;
-  if(sc&&sc.start){
-    var d=new Date(), mins=d.getHours()*60+d.getMinutes();
-    var sp=sc.start.split(':'), startM=(+sp[0])*60+(+sp[1]||0);
-    var g=(sc.grace==null?15:+sc.grace);
-    if(mins>startM+g) st='L';
-  }
-  return st;
 }
 function findStu(cls,id){ for(var i=0;i<cls.students.length;i++) if(cls.students[i].id===id) return cls.students[i]; return null; }
 function findStudentGlobal(sid){
@@ -3563,6 +4026,7 @@ function handleScan(text){
   var hit=findStudentGlobal(parts[2]);
   if(!hit){ stampShow('err','UNKNOWN','Student not in roster','Was this student removed?'); beep('err'); return; }
   var cls=hit.cls, stu=hit.stu;
+  if(stu.ar){ stampShow('err','ARCHIVED',stu.name,'Restore them in Roster to scan again'); beep('err'); return; }
   var prev=marksFor(cls.id,curScanDate())[stu.id];
   if(prev&&prev.st){
     stampShow('dup','ALREADY '+wordFor(prev.st).toUpperCase(),stu.name,cls.name+' · first scan '+(prev.ts?fmtTs(prev.ts):(prev.tm||'')));
@@ -3589,9 +4053,10 @@ function stampShow(kind,status,name,meta){
 function updateScanCount(){
   var id=$('#scanClass').value, cls=getClass(id);
   if(!cls){ $('#scanCount').textContent='Add a class in Roster to start'; return; }
+  var act=sortedStudents(cls);
   var m=marksFor(id,curScanDate()), n=0;
-  cls.students.forEach(function(s){ if(m[s.id]&&m[s.id].st) n++; });
-  $('#scanCount').innerHTML=colorDot(cls)+n+' / '+cls.students.length+' marked · '+esc(cls.name)+' · today';
+  act.forEach(function(s){ if(m[s.id]&&m[s.id].st) n++; });
+  $('#scanCount').innerHTML=colorDot(cls)+n+' / '+act.length+' marked · '+esc(cls.name)+' · today';
 }
 function photoDecode(file){
   if(!window.jsQR){ toast('QR library not loaded — check internet and reload'); return; }
@@ -3679,7 +4144,7 @@ function absentRest(){
   var id=$('#recClass').value, cls=getClass(id); if(!cls) return;
   var date=$('#recDate').value||todayStr();
   var m=marksFor(id,date), n=0;
-  cls.students.forEach(function(s){
+  sortedStudents(cls).forEach(function(s){
     if(!m[s.id]||!m[s.id].st){
       state.ev.push({u:uid(),ts:Date.now(),d:date,c:id,s:s.id,n:s.name,st:'A',via:'auto',tm:nowTime(),sy:0});
       n++;
@@ -3693,7 +4158,7 @@ function clearDay(){
   var date=$('#recDate').value||todayStr();
   if(!confirm('Clear all marks for '+cls.name+' on '+date+'?')) return;
   var m=marksFor(id,date);
-  cls.students.forEach(function(s){
+  sortedStudents(cls).forEach(function(s){
     if(m[s.id]&&m[s.id].st){
       state.ev.push({u:uid(),ts:Date.now(),d:date,c:id,s:s.id,n:s.name,st:'',via:'tap',tm:nowTime(),sy:0});
     }
@@ -3714,12 +4179,12 @@ function showOneQR(cls,stuId){
   wrap.className='modal show';
   wrap.innerHTML='<div class="box" style="align-items:center;text-align:center">'+
     '<h2 style="margin:0">'+esc(s.name)+'</h2><p class="muted">'+esc(cls.name)+'</p>'+
-    '<div id="oneQR" style="background:#fff;padding:12px;border-radius:10px"></div>'+
+    '<div id="oneQR" style="background:#fff;padding:12px;border-radius:10px;border:3px solid #EE7A2E"></div>'+
     '<div class="row" style="width:100%"><button class="btn soft" id="oneQRdl">Save PNG</button>'+
     '<button class="btn soft" id="oneQRpr">Print</button>'+
     '<button class="btn" id="oneQRclose">Close</button></div></div>';
   document.body.appendChild(wrap);
-  new QRCode(wrap.querySelector('#oneQR'),{text:qrPayload(cls.id,s.id),width:220,height:220,correctLevel:QRCode.CorrectLevel.M});
+  new QRCode(wrap.querySelector('#oneQR'),{text:qrPayload(cls.id,s.id),width:220,height:220,colorDark:'#0B4F3F',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   wrap.querySelector('#oneQRclose').onclick=function(){ wrap.remove(); };
   wrap.querySelector('#oneQRpr').onclick=function(){ wrap.remove(); printCards(cls.id, s.id); };
   wrap.querySelector('#oneQRdl').onclick=function(){
@@ -3748,13 +4213,15 @@ function printCards(clsId, onlyId){
   var grid=area.querySelector('.qr-grid');
   studs.forEach(function(s){
     var card=document.createElement('div'); card.className='qr-card';
-    var cc=classColor(cls); if(cc) card.style.borderTop='6px solid '+cc;
-    var qd=document.createElement('div');
-    card.appendChild(qd);
-    var nm=document.createElement('div'); nm.className='qn'; nm.textContent=s.name; card.appendChild(nm);
-    var cc=document.createElement('div'); cc.className='qc'; cc.textContent=cls.name+(s.num?' · #'+s.num:''); card.appendChild(cc);
+    card.innerHTML='<div class="qr-head">PRESENTE · ATTENDANCE PASS</div>'+
+      '<div class="qr-body"><div class="qr-frame"></div>'+
+      '<div class="qn"></div><div class="qc"></div></div>'+
+      '<div class="qr-foot"></div>';
+    card.querySelector('.qn').textContent=s.name;
+    card.querySelector('.qc').innerHTML=colorDot(cls)+esc(cls.name)+(s.num?' · #'+esc(s.num):'');
     grid.appendChild(card);
-    new QRCode(qd,{text:qrPayload(cls.id,s.id),width:256,height:256,correctLevel:QRCode.CorrectLevel.M});
+    new QRCode(card.querySelector('.qr-frame'),{text:qrPayload(cls.id,s.id),width:256,height:256,
+      colorDark:'#0B4F3F',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   });
   setTimeout(function(){
     document.body.classList.add('printing');
@@ -4152,8 +4619,8 @@ function schedStr(c){ return c.sched?JSON.stringify(c.sched):''; }
 function rosterRows(){
   var rows=[];
   state.classes.forEach(function(c){
-    if(!c.students.length) rows.push([c.id,c.name,'','','','',schedStr(c)]);
-    c.students.forEach(function(s){ rows.push([c.id,c.name,s.id,s.name,s.num||'',s.em||'',schedStr(c)]); });
+    if(!c.students.length) rows.push([c.id,c.name,'','','','',schedStr(c),'']);
+    c.students.forEach(function(s){ rows.push([c.id,c.name,s.id,s.name,s.num||'',s.em||'',schedStr(c),(s.ar?'A':'')+(s.pin?'P':'')]); });
   });
   return rows;
 }
@@ -4165,7 +4632,11 @@ function rebuildRoster(rows){
       var sj=String(r[6]||''); if(sj){ try{ map[cid].sched=JSON.parse(sj); }catch(e){} } }
     else map[cid].name=String(r[1]||map[cid].name);
     var sid=String(r[2]||'');
-    if(sid) map[cid].students.push({id:sid,name:String(r[3]||''),num:String(r[4]||''),em:String(r[5]||'')});
+    if(sid){
+      var fl=String(r[7]||'');
+      map[cid].students.push({id:sid,name:String(r[3]||''),num:String(r[4]||''),em:String(r[5]||''),
+        ar:fl.indexOf('A')>=0,pin:fl.indexOf('P')>=0});
+    }
   });
   state.classes=order.map(function(id){ return map[id]; });
 }
@@ -4340,7 +4811,7 @@ function init(){
   $('#btnAddClass').onclick=addClass;
   $('#btnEnroll').onclick=openEnroll;
   $('#newClassName').onkeydown=function(e){ if(e.key==='Enter') addClass(); };
-  $('#btnBackClasses').onclick=function(){ detailClassId=null; renderClassHome(); };
+  $('#btnBackClasses').onclick=function(){ detailClassId=null; selMode=false; selSet={}; renderClassHome(); };
   $('#btnRenameClass').onclick=function(){
     var cls=getClass(detailClassId); if(!cls) return;
     var n=prompt('Class name:',cls.name); if(n===null) return;
@@ -4356,6 +4827,24 @@ function init(){
   $('#btnAddStu').onclick=addStudent;
   $('#stuName').onkeydown=function(e){ if(e.key==='Enter') addStudent(); };
   $('#btnBulk').onclick=bulkAdd;
+  $('#btnSel').onclick=function(){ selMode=!selMode; selSet={}; renderClassDetail(); };
+  function selIds(){ return Object.keys(selSet); }
+  function bulkApply(fn,label){
+    var ids=selIds(); if(!ids.length){ toast('Tick some students first'); return; }
+    var cls=getClass(detailClassId); if(!cls) return;
+    ids.forEach(function(id){ var st=findStu(cls,id); if(st) fn(st); });
+    selMode=false; selSet={}; touchRoster(); renderClassDetail(); toast(label+' '+ids.length);
+  }
+  $('#selPin').onclick=function(){ bulkApply(function(st){ st.pin=true; },'Pinned'); };
+  $('#selUnpin').onclick=function(){ bulkApply(function(st){ st.pin=false; },'Unpinned'); };
+  $('#selArch').onclick=function(){ bulkApply(function(st){ st.ar=true; st.pin=false; },'Archived'); };
+  $('#selRem').onclick=function(){
+    var ids=selIds(); if(!ids.length){ toast('Tick some students first'); return; }
+    var cls=getClass(detailClassId); if(!cls) return;
+    if(!confirm('Remove '+ids.length+' student(s) permanently? History stays in exports, but their QR dies and re-adding creates a new identity. Consider Archive instead.')) return;
+    cls.students=cls.students.filter(function(st){ return !selSet[st.id]; });
+    selMode=false; selSet={}; touchRoster(); renderClassDetail();
+  };
   $('#btnPrintQR').onclick=function(){ printCards(detailClassId); };
 
   $('#recClass').onchange=renderRecords;
