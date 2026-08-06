@@ -189,7 +189,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v6.0</span>
+  <span class="brand-sub">attendance · v6.2</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -430,7 +430,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v6.0 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v6.2 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -458,9 +458,10 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 <canvas id="scanCanvas" style="display:none"></canvas>
 
 <script type="text/plain" id="gsCode">
-/** Presente sync backend v8.2 — paste into Apps Script of a private Google Sheet.*/
-/** (v8.2: reminders now fire only twice per task — at ~3 days and ~24 hours     */
-/**  before the deadline, to non-submitters only. Card layout per the teacher.)  */
+/** Presente sync backend v8.4 — paste into Apps Script of a private Google Sheet.*/
+/** (v8.4: teachers can upload task attachment files -> Drive 'Presente         */
+/**  Materials', shared view-only; assign emails show filenames as links.        */
+/**  v8.3: card header colors via bgcolor. v8.2: reminders at ~3d and ~24h.)     */
 /** FIRST TIME:  1) Change TOKEN below.  2) Deploy > New deployment > Web app,    */
 /**    Execute as: Me / Access: Anyone.  3) Put URL + token in the app.           */
 /** UPDATING an existing deployment: replace all code with this, save, then       */
@@ -911,6 +912,7 @@ function doPost(e) {
   if (body.op === 'newsession') return newSession_(body);
   if (body.op === 'nudge') return nudge_(body);
   if (body.op === 'assign') return assign_(body);
+  if (body.op === 'tfile') return teacherFile_(body);
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -1207,7 +1209,11 @@ function buildCardPdf_(name, num, cls, dataUri) {
     '<tr><td class="lb">Class:</td><td class="vl">' + escHtml_(cls || '') + '</td></tr>' +
     '</table></td></tr></table>' +
     '<table class="tally">' +
-    '<tr><th class="h1">1 pt (Green)</th><th class="h3">3 pts (Beige)</th><th class="h5">5 pts (Gray)</th></tr>' +
+    '<tr>' +
+    '<th class="h1" bgcolor="#21B573" style="background-color:#21B573;color:#ffffff">1 pt (Green)</th>' +
+    '<th class="h3" bgcolor="#DEB88C" style="background-color:#DEB88C;color:#1b1b1b">3 pts (Beige)</th>' +
+    '<th class="h5" bgcolor="#ADADAD" style="background-color:#ADADAD;color:#1b1b1b">5 pts (Gray)</th>' +
+    '</tr>' +
     '<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>' +
     '</table>' +
     '</body></html>';
@@ -1251,7 +1257,11 @@ function assign_(body) {
   var links = (tk.config && tk.config.links) || [];
   var li = '';
   for (var i = 0; i < links.length; i++) {
-    li += '<li><a href="' + escHtml_(links[i]) + '">' + escHtml_(links[i]) + '</a></li>';
+    var L = links[i];
+    var lu = (typeof L === 'string') ? L : String((L && L.u) || '');
+    var ln = (typeof L === 'string') ? L : String((L && L.n) || lu);
+    if (!lu) continue;
+    li += '<li><a href="' + escHtml_(lu) + '">' + escHtml_(ln) + '</a></li>';
   }
   var htmlBody = '<div style="font-family:Arial,sans-serif;max-width:620px">' +
     '<h2 style="color:#0B4F3F;border-bottom:3px solid #EE7A2E;padding-bottom:6px">' +
@@ -1284,6 +1294,22 @@ function assign_(body) {
     }
   }
   return json_({ ok: true, sent: sent });
+}
+function teacherFile_(body) {
+  var s = sheets_();
+  var b64 = String(body.b64 || '');
+  if (!b64) return json_({ ok: false, err: 'nofile' });
+  if (b64.length > 14000000) return json_({ ok: false, err: 'toobig' });
+  var fname = String(body.fname || 'file').replace(/[\\\/:*?"<>|]+/g, '_');
+  var blob = Utilities.newBlob(Utilities.base64Decode(b64),
+    String(body.mime || 'application/octet-stream'), fname);
+  var cmap = classMap_(s);
+  var cname = (cmap[String(body.c || '')] && cmap[String(body.c || '')].name) || 'Class';
+  var root = childFolder_(DriveApp.getRootFolder(), 'Presente Materials');
+  var cf = childFolder_(root, cname);
+  var file = cf.createFile(blob);
+  try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (e) {}
+  return json_({ ok: true, url: file.getUrl(), name: fname });
 }
 function dailyReminder() {
   var s = sheets_();
@@ -4483,6 +4509,38 @@ function submitLinkFor(t){
   }
   return link;
 }
+function showSubmitLink(t){
+  var url=(state.settings.url||'').trim();
+  var L=submitLinkFor(t);
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">'+esc(t.title)+' — submission link</h2>'+
+    '<p class="muted">'+(url
+      ?'This exact link is what the Assign email carries for this task. It goes live once the task reaches your Sheet — syncing now…'
+      :'Set up sync in Settings first — the link only works through your Google Sheet.')+'</p>'+
+    '<textarea rows="4" readonly style="font-family:var(--mono);font-size:12px">'+esc(L)+'</textarea>'+
+    '<div class="row" style="margin-top:8px"><button class="btn" id="slCopy">Copy link</button>'+
+    '<button class="btn soft" id="slClose">Done</button></div>'+
+    '<p class="muted" id="slState" style="margin-top:8px">'+(url?'Syncing…':'')+'</p></div>';
+  document.body.appendChild(wrap);
+  wrap.querySelector('#slCopy').onclick=function(){
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      navigator.clipboard.writeText(L).then(function(){ toast('Link copied'); },function(){ fallbackCopy(L); });
+    } else fallbackCopy(L);
+  };
+  wrap.querySelector('#slClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+  if(url){
+    var stEl=wrap.querySelector('#slState');
+    Promise.resolve().then(function(){ return syncNow(); }).then(function(){
+      if(stEl) stEl.textContent = state.tasksDirty
+        ? 'Not synced yet — press Sync now in the header before sharing.'
+        : 'Synced ✓ — the link is live.';
+    }).catch(function(){
+      if(stEl) stEl.textContent='Could not sync — the link activates after your next successful Sync.';
+    });
+  }
+}
 function typeChip(t){
   var m={assign:['A','#C7E8CF'],question:['Q','#C4E2F2'],material:['M','#E3D9C8'],topic:['T','#D6D0F0']};
   var x=m[t.type]||m.assign;
@@ -4529,16 +4587,18 @@ function openTaskEditor(taskId){
   var cid=$('#taskClass').value, cls=getClass(cid);
   if(!cls){ toast('Pick a class first'); return; }
   var t=taskId?getTask(taskId):null;
+  if(t){ cid=t.c; cls=getClass(cid); }
   editTaskId=t?t.id:null;
   var cfg=(t&&t.cfg)||{};
   var wrap=document.createElement('div');
   wrap.className='modal show';
-  var topics=classTasks(cid).filter(function(x){ return x.type==='topic'&&(!t||x.id!==t.id); });
   wrap.innerHTML='<div class="box" style="max-height:88vh;overflow:auto"><h2 style="margin:0">'+(t?'Edit task':'New task')+'</h2>'+
     '<div><label>Type</label><div class="seg" id="tkType">'+
       ['assign|Assignment','question|Question','material|Material','topic|Topic'].map(function(p){ var a=p.split('|');
         return '<button data-ty="'+a[0]+'"'+(((t&&t.type)||'assign')===a[0]?' class="on" style="background:var(--board);color:var(--chalk)"':'')+'>'+a[1]+'</button>'; }).join('')+
     '</div></div>'+
+    '<div><label>Subject / Class'+(t?' <span class="muted">(fixed after creation)</span>':'')+'</label>'+
+      '<select id="tkClass"'+(t?' disabled':'')+'></select></div>'+
     '<div><label>Title</label><input id="tkTitle" value="'+esc(t?t.title:'')+'"></div>'+
     '<div id="tkBody">'+
       '<div><label>Instructions</label>'+
@@ -4551,6 +4611,9 @@ function openTaskEditor(taskId){
       '<div id="tkEd" contenteditable="true" style="border:1.5px solid var(--line);border-radius:10px;min-height:90px;padding:10px;background:#fff">'+(cfg.html||'')+'</div></div>'+
       '<div><label>Links (Drive, YouTube, anything)</label>'+
         '<div class="row"><div><input id="tkLinkIn" placeholder="https://…"></div><button class="btn soft fit" id="tkLinkAdd" type="button">Add</button></div>'+
+        '<button class="btn soft" id="tkFileBtn" type="button" style="margin-top:8px">Upload a file from this device</button>'+
+        '<input type="file" id="tkFile" class="hidden">'+
+        '<p class="muted" style="margin-top:6px">Uploads go to your Google Drive ("Presente Materials"), shared view-only by link. Max ~9 MB — for bigger files, upload to Drive yourself and paste the link.</p>'+
         '<div id="tkLinks"></div></div>'+
       '<div class="row"><div><label>Points</label><input type="number" id="tkPts" min="0" value="'+((t&&t.pts)||0)+'"></div>'+
         '<div><label>Due date</label><input type="date" id="tkDate"></div>'+
@@ -4563,19 +4626,43 @@ function openTaskEditor(taskId){
         '<textarea id="tkCh" rows="4">'+esc((cfg.choices||[]).join('\n'))+'</textarea>'+
         '<div id="tkKeyWrap" style="display:none"><label>Correct answer (kept secret; auto-scored silently)</label><select id="tkKey"></select></div></div></div>'+
       '<div><label>Rubric (optional — used when grading)</label><textarea id="tkRub" rows="3" placeholder="Criterion = points, one per line&#10;Content = 10&#10;Delivery = 5">'+esc((t&&t.rub)||'')+'</textarea></div>'+
-      '<div><label>Topic</label><select id="tkTopic"><option value="">— none —</option>'+
-        topics.map(function(x){ return '<option value="'+esc(x.id)+'"'+((cfg.topic===x.id)?' selected':'')+'>'+esc(x.title)+'</option>'; }).join('')+'</select></div>'+
+      '<div><label>Topic</label><select id="tkTopic"></select></div>'+
     '</div>'+
     '<button class="btn" id="tkSave">Save</button>'+
     (t?'<button class="btn danger" id="tkDel">Delete task</button>':'')+
     '<button class="btn soft" id="tkClose">Close</button></div>';
   document.body.appendChild(wrap);
+  var selC=wrap.querySelector('#tkClass');
+  selC.innerHTML=state.classes.map(function(c0){
+    return '<option value="'+esc(c0.id)+'"'+(c0.id===cid?' selected':'')+'>'+esc(c0.name)+'</option>';
+  }).join('');
+  selC.onchange=function(){ cid=selC.value; cls=getClass(cid); paintTopics(); };
+  function paintTopics(){
+    var tops=classTasks(cid).filter(function(x){ return x.type==='topic'&&(!t||x.id!==t.id); });
+    $('#tkTopic').innerHTML='<option value="">— none —</option>'+
+      tops.map(function(x){ return '<option value="'+esc(x.id)+'"'+((cfg.topic===x.id)?' selected':'')+'>'+esc(x.title)+'</option>'; }).join('')+
+      '<option value="__new__">➕ New topic…</option>';
+  }
+  $('#tkTopic').onchange=function(){
+    if(this.value!=='__new__') return;
+    var cname=(getClass(cid)&&getClass(cid).name)||'this class';
+    var name=prompt('New topic name for '+cname+':');
+    this.value='';
+    if(!name||!name.trim()){ paintTopics(); return; }
+    var nt={ id:uid(), c:cid, type:'topic', title:name.trim(), due:0, pts:0, rub:'',
+      cfg:{html:'',links:[],topic:''}, created:Date.now(), fl:'', rmd:'' };
+    state.tasks.push(nt); touchTasks();
+    cfg.topic=nt.id;
+    paintTopics();
+    toast('Topic "'+nt.title+'" created in '+cname);
+  };
   var curType=(t&&t.type)||'assign';
   var curQt=cfg.qtype||'short';
   var links=(cfg.links||[]).slice();
   function paintLinks(){
-    $('#tkLinks').innerHTML=links.map(function(u,i){
-      return '<div class="item"><div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">'+esc(u)+'</div><button class="icon-btn" data-li="'+i+'">✕</button></div>';
+    $('#tkLinks').innerHTML=links.map(function(L,i){
+      var label=(typeof L==='string')?L:(((L&&L.n)?L.n+' — ':'')+((L&&L.u)||''));
+      return '<div class="item"><div class="grow" style="font-family:var(--mono);font-size:12px;word-break:break-all">'+esc(label)+'</div><button class="icon-btn" data-li="'+i+'">✕</button></div>';
     }).join('');
     $$('#tkLinks [data-li]').forEach(function(b){ b.onclick=function(){ links.splice(Number(b.getAttribute('data-li')),1); paintLinks(); }; });
   }
@@ -4612,11 +4699,38 @@ function openTaskEditor(taskId){
     if(u.indexOf('http')!==0){ toast('Paste a full link starting with http'); return; }
     links.push(u); $('#tkLinkIn').value=''; paintLinks();
   };
+  $('#tkFileBtn').onclick=function(){
+    var url=(state.settings.url||'').trim();
+    if(!url){ toast('Set up sync first — files upload through your Google Sheet'); return; }
+    $('#tkFile').click();
+  };
+  $('#tkFile').onchange=function(){
+    var f=this.files[0]; this.value='';
+    if(!f) return;
+    if(f.size>9*1024*1024){ toast('Too big ('+Math.round(f.size/1048576)+' MB). Upload it to Drive yourself and paste the link.'); return; }
+    var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
+    var btn=$('#tkFileBtn'); btn.disabled=true; btn.textContent='Uploading…';
+    var rd=new FileReader();
+    rd.onload=function(){
+      var b64=String(rd.result).split(',')[1]||'';
+      fetch(url,{method:'POST',body:JSON.stringify({t:token,op:'tfile',c:cid,fname:f.name,mime:f.type||'application/octet-stream',b64:b64})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        btn.disabled=false; btn.textContent='Upload a file from this device';
+        if(!j.ok){ toast(j.err==='toobig'?'File too big — paste a Drive link instead':'Upload failed — check sync settings'); return; }
+        links.push({u:j.url,n:f.name});
+        paintLinks();
+        toast('Attached: '+f.name);
+      })
+      .catch(function(){ btn.disabled=false; btn.textContent='Upload a file from this device'; toast('No connection — try again'); });
+    };
+    rd.readAsDataURL(f);
+  };
   if(t&&t.due){ var d=new Date(t.due);
     $('#tkDate').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     $('#tkTime').value=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
   }
-  paintLinks(); paintMode();
+  paintLinks(); paintTopics(); paintMode();
   $('#tkSave').onclick=function(){
     var title=$('#tkTitle').value.trim();
     if(!title){ toast('Give it a title'); return; }
@@ -4632,13 +4746,18 @@ function openTaskEditor(taskId){
       }
     }
     if(curType!=='topic'&&curType!=='material'&&!due){ toast('Set a deadline — the submit link closes at it'); return; }
-    if(t){ t.type=curType; t.title=title; t.due=due; t.pts=Number($('#tkPts').value)||0; t.rub=$('#tkRub').value.trim(); t.cfg=cfg2; }
+    var savedTask;
+    if(t){ t.type=curType; t.title=title; t.due=due; t.pts=Number($('#tkPts').value)||0; t.rub=$('#tkRub').value.trim(); t.cfg=cfg2; savedTask=t; }
     else{
-      state.tasks.push({ id:uid(), c:cid, type:curType, title:title, due:due,
-        pts:Number($('#tkPts').value)||0, rub:$('#tkRub').value.trim(), cfg:cfg2, created:Date.now(), fl:'', rmd:'' });
+      savedTask={ id:uid(), c:cid, type:curType, title:title, due:due,
+        pts:Number($('#tkPts').value)||0, rub:$('#tkRub').value.trim(), cfg:cfg2, created:Date.now(), fl:'', rmd:'' };
+      state.tasks.push(savedTask);
     }
-    touchTasks(); wrap.remove(); renderTasks();
-    toast('Saved. Use Open → Assign to email it to the class.');
+    touchTasks(); wrap.remove();
+    if($('#taskClass').value!==cid) $('#taskClass').value=cid;
+    renderTasks();
+    if(savedTask.type==='assign'||savedTask.type==='question') showSubmitLink(savedTask);
+    else toast('Saved.');
   };
   if(t){ $('#tkDel').onclick=function(){
     if(!confirm('Delete this task? Submissions already collected stay in your Sheet and Drive.')) return;
