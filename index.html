@@ -189,7 +189,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v5.1</span>
+  <span class="brand-sub">attendance · v5.2</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -418,7 +418,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v5.1 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v5.2 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -445,8 +445,9 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 <canvas id="scanCanvas" style="display:none"></canvas>
 
 <script type="text/plain" id="gsCode">
-/** Presente sync backend v8.1 — paste into Apps Script of a private Google Sheet.*/
-/** (v8.1 = v8 with the teacher's own Participation Card layout; nothing else.)  */
+/** Presente sync backend v8.2 — paste into Apps Script of a private Google Sheet.*/
+/** (v8.2: reminders now fire only twice per task — at ~3 days and ~24 hours     */
+/**  before the deadline, to non-submitters only. Card layout per the teacher.)  */
 /** FIRST TIME:  1) Change TOKEN below.  2) Deploy > New deployment > Web app,    */
 /**    Execute as: Me / Access: Anyone.  3) Put URL + token in the app.           */
 /** UPDATING an existing deployment: replace all code with this, save, then       */
@@ -1294,8 +1295,14 @@ function dailyReminder() {
     var type = String(tasks[t][2] || '');
     if (type !== 'assign' && type !== 'question') continue;
     var due = Number(tasks[t][4] || 0);
-    if (!(due > now && due <= now + 26 * 3600000)) continue;
-    if (String(tasks[t][10] || '')) continue;
+    if (due <= now) continue;
+    var hrs = (due - now) / 3600000;
+    var doneFlags = String(tasks[t][10] || '');
+    var stage = '';
+    if (hrs <= 26 && doneFlags.indexOf('1') < 0) stage = '1';
+    else if (hrs <= 74 && hrs > 26 && doneFlags.indexOf('3') < 0) stage = '3';
+    if (!stage) continue;
+    var subjPre = stage === '1' ? 'Due tomorrow: ' : 'Due in 3 days: ';
     var tid = String(tasks[t][0]);
     var cid = String(tasks[t][1]);
     var title = String(tasks[t][3] || '');
@@ -1309,7 +1316,7 @@ function dailyReminder() {
       if (em2.indexOf('@') < 1) continue;
       try {
         MailApp.sendEmail({ to: em2, name: EMAIL_FROM_NAME,
-          subject: 'Due tomorrow: ' + title + ' — ' + dueTxt,
+          subject: subjPre + title + ' — ' + dueTxt,
           body: 'Hi ' + String(roster[r3][3] || '') + ',\n\nReminder: you have not yet submitted\n\n  ' +
                 title + '\n  Deadline: ' + dueTxt + '\n\n' +
                 (SITE ? 'Submit here: ' + SITE + 'submit.html?task=' + tid + '\n\n' :
@@ -1318,7 +1325,7 @@ function dailyReminder() {
         quota--;
       } catch (e2) { quota = 0; }
     }
-    s.ta.getRange(t + 2, 11).setValue(Date.now());
+    s.ta.getRange(t + 2, 11).setValue(doneFlags ? doneFlags + ',' + stage : stage);
   }
 }
 function setupDailyReminder() {
@@ -3758,6 +3765,7 @@ function fillClassSelect(sel, withAll){
   sel.innerHTML=html;
   if(cur && (withAll&&cur==='__all' || getClass(cur))) sel.value=cur;
 }
+function syncExpSelectors(){ fillClassSelect($('#expClass'),false); }
 function renderSelects(){
   fillClassSelect($('#scanClass'),false);
   fillClassSelect($('#recClass'),false);
@@ -3842,6 +3850,54 @@ function renderClassDetail(){
     $$('#studentList [data-rm]').forEach(function(b){ b.onclick=function(){ removeStudent(cls, b.getAttribute('data-rm')); }; });
     $$('#studentList [data-qr]').forEach(function(b){ b.onclick=function(){ showOneQR(cls, b.getAttribute('data-qr')); }; });
   }
+}
+function saveSched(cls){
+  var days=[];
+  $$('#schedDays button').forEach(function(b){ if(b.classList.contains('on')) days.push(+b.getAttribute('data-d')); });
+  var start=$('#schedStart').value, end=$('#schedEnd').value;
+  var g=parseInt($('#schedGrace').value,10); if(isNaN(g)||g<0) g=15;
+  var color=(cls.sched&&cls.sched.color)||'';
+  if(!days.length&&!start&&!end&&!color){ delete cls.sched; }
+  else{
+    cls.sched={days:days,start:start,end:end,grace:g};
+    if(color) cls.sched.color=color;
+  }
+  touchRoster(); renderSelects();
+}
+function fmtSched(c){
+  var sc=c.sched; if(!sc||(!sc.start&&!(sc.days&&sc.days.length))) return '';
+  var names=['Su','M','T','W','Th','F','Sa'];
+  var ds=(sc.days||[]).slice().sort(function(a,b){ return ((a+6)%7)-((b+6)%7); })
+    .map(function(d){ return names[d]; }).join('/');
+  var t=sc.start?(' '+sc.start+(sc.end?'\u2013'+sc.end:'')):'';
+  return (ds+t).trim();
+}
+var PASTELS=['#F5C6C6','#F8DCB8','#F5EFB5','#C7E8CF','#C4E2F2','#D6D0F0','#F1CDE2','#E3D9C8'];
+function classColor(c){ return (c&&c.sched&&c.sched.color)||''; }
+function setClassColor(cls,hex){
+  if(hex){
+    if(!cls.sched) cls.sched={days:[],start:'',end:'',grace:15};
+    cls.sched.color=hex;
+  } else if(cls.sched){
+    delete cls.sched.color;
+    if(!(cls.sched.days&&cls.sched.days.length)&&!cls.sched.start&&!cls.sched.end) delete cls.sched;
+  }
+  touchRoster();
+}
+function colorDot(c){
+  var col=classColor(c);
+  return col?'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+col+';border:1px solid rgba(0,0,0,.12);margin-right:7px"></span>':'';
+}
+function effectiveStatus(cls){
+  var st=curStatus;
+  var sc=cls&&cls.sched;
+  if(sc&&sc.start){
+    var d=new Date(), mins=d.getHours()*60+d.getMinutes();
+    var sp=sc.start.split(':'), startM=(+sp[0])*60+(+sp[1]||0);
+    var g=(sc.grace==null?15:+sc.grace);
+    if(mins>startM+g) st='L';
+  }
+  return st;
 }
 function findStu(cls,id){ for(var i=0;i<cls.students.length;i++) if(cls.students[i].id===id) return cls.students[i]; return null; }
 function findStudentGlobal(sid){
