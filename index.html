@@ -189,7 +189,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
 
 <header class="app-head">
   <span class="brand">PRESENTE</span>
-  <span class="brand-sub">attendance · v6.2</span>
+  <span class="brand-sub">attendance · v6.4</span>
   <span id="syncDot">sync off</span>
 </header>
 
@@ -245,6 +245,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <div class="row">
         <button class="btn ghost sm" id="btnPrintQR">Print QR cards</button>
         <button class="btn soft sm" id="btnRenameClass">Rename</button>
+        <button class="btn soft sm" id="btnArchClass">Archive class</button>
         <button class="btn danger sm fit" id="btnDelClass">Delete</button>
       </div>
       <div style="margin-top:10px">
@@ -344,6 +345,8 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
   <div class="card">
     <h2>QR cards</h2>
     <button class="btn ghost" id="btnCards">Print QR cards for selected class</button>
+    <button class="btn ghost" id="btnGradesCSV">Task scores → CSV…</button>
+    <button class="btn ghost" id="btnAllStuCSV">All students in active classes → CSV</button>
     <p class="muted" style="margin-top:8px">Prints a cut-out grid. Laminate or have students keep them in their IDs.</p>
   </div>
   <div class="card">
@@ -430,7 +433,7 @@ kbd{font-family:var(--mono);background:var(--paper);border:1px solid var(--line)
       <p style="margin-top:8px">Does not touch your Google Sheet or the other device.</p>
     </div>
   </details>
-  <p class="muted mono" style="text-align:center">Presente v6.2 · local-first · your data stays yours</p>
+  <p class="muted mono" style="text-align:center">Presente v6.4 · local-first · your data stays yours</p>
 </section>
 
 <nav class="tabs">
@@ -3737,7 +3740,7 @@ function storageSet(v){
 /* ============ state ============ */
 var state=null;
 function blankState(){
-  return { classes:[], ev:[], tasks:[], subs:{}, gr:{},
+  return { classes:[], ev:[], tasks:[], subs:{}, gr:{}, grOut:[],
     settings:{url:'',token:''},
     rosterTs:0, rosterDirty:false, tasksTs:0, tasksDirty:false,
     lastServerTs:0, dev: uid() };
@@ -3746,6 +3749,7 @@ function ensureFields(){
   if(!state.tasks) state.tasks=[];
   if(!state.subs) state.subs={};
   if(!state.gr) state.gr={};
+  if(!state.grOut) state.grOut=[];
   if(!state.tasksTs) state.tasksTs=0;
   if(state.tasksDirty==null) state.tasksDirty=false;
 }
@@ -3805,20 +3809,21 @@ function setTab(name){
 }
 
 /* ============ selects & roster rendering ============ */
-function fillClassSelect(sel, withAll){
+function fillClassSelect(sel, withAll, inclArch){
   var cur=sel.value, html='';
   if(withAll) html+='<option value="__all">All classes</option>';
-  if(!state.classes.length && !withAll) html+='<option value="">— add a class first —</option>';
-  state.classes.forEach(function(c){ html+='<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; });
+  var list=state.classes.filter(function(c){ return inclArch||classActive(c); });
+  if(!list.length && !withAll) html+='<option value="">— add a class first —</option>';
+  list.forEach(function(c){ html+='<option value="'+esc(c.id)+'">'+esc(c.name)+(classActive(c)?'':' (archived)')+'</option>'; });
   sel.innerHTML=html;
-  if(cur && (withAll&&cur==='__all' || getClass(cur))) sel.value=cur;
+  if(cur && (withAll&&cur==='__all' || (function(){ var g0=getClass(cur); return g0&&(inclArch||classActive(g0)); })())) sel.value=cur;
 }
-function syncExpSelectors(){ fillClassSelect($('#expClass'),false); }
+function syncExpSelectors(){ fillClassSelect($('#expClass'),false,true); }
 function renderSelects(){
   fillClassSelect($('#taskClass'));
   fillClassSelect($('#scanClass'),false);
   fillClassSelect($('#recClass'),false);
-  fillClassSelect($('#expClass'),false);
+  fillClassSelect($('#expClass'),false,true);
 }
 var detailClassId=null, selMode=false, selSet={};
 function renderRoster(){
@@ -3832,11 +3837,24 @@ function renderClassHome(){
   if(!state.classes.length){
     el.innerHTML='<p class="muted">No classes yet. Add your first one below, then add students.</p>'; return;
   }
-  el.innerHTML=state.classes.map(function(c){
+  var actC=state.classes.filter(classActive), arcC=state.classes.filter(function(c){ return !classActive(c); });
+  el.innerHTML=actC.map(function(c){
     return '<div class="item"'+(classColor(c)?' style="box-shadow:inset 4px 0 0 '+classColor(c)+'"':'')+'><div class="grow"><div class="nm">'+colorDot(c)+esc(c.name)+'</div>'+
       '<div class="sub">'+c.students.length+' student'+(c.students.length===1?'':'s')+'</div></div>'+
       '<button class="btn soft sm" data-open="'+esc(c.id)+'">Open</button></div>';
   }).join('');
+  if(arcC.length){
+    el.innerHTML+='<details style="margin-top:10px"><summary>Archived classes ('+arcC.length+')</summary><div class="d-body">'+
+      arcC.map(function(c){
+        return '<div class="item"><div class="grow"><div class="nm" style="color:var(--ink-soft)">'+esc(c.name)+'</div>'+
+          '<div class="sub">'+c.students.length+' student'+(c.students.length===1?'':'s')+' · archived</div></div>'+
+          '<button class="btn soft sm" data-open="'+esc(c.id)+'">Open</button>'+
+          '<button class="btn soft sm" data-unarc="'+esc(c.id)+'">Unarchive</button></div>';
+      }).join('')+'</div></details>';
+  }
+  $$('#classList [data-unarc]').forEach(function(b){
+    b.onclick=function(){ var c0=getClass(b.getAttribute('data-unarc')); if(c0){ setClassArch(c0,false); renderClassHome(); renderSelects(); toast('Class restored'); } };
+  });
   $$('#classList [data-open]').forEach(function(b){
     b.onclick=function(){ detailClassId=b.getAttribute('data-open'); selMode=false; selSet={}; renderClassDetail(); };
   });
@@ -3868,6 +3886,19 @@ function renderClassDetail(){
   $$('#colorRow [data-col]').forEach(function(b){
     b.onclick=function(){ setClassColor(cls,b.getAttribute('data-col')); renderClassDetail(); };
   });
+  var isArc=!classActive(cls);
+  if(isArc) $('#cdCount').textContent+=' · ARCHIVED';
+  var ab=$('#btnArchClass');
+  ab.textContent=isArc?'Unarchive class':'Archive class';
+  ab.onclick=function(){
+    if(isArc){
+      setClassArch(cls,false);
+      renderSelects(); renderClassDetail();
+      toast('Class restored');
+    } else {
+      openArchiveClass(cls);
+    }
+  };
   var list=$('#studentList');
   var act=sortedStudents(cls), arch=archivedStudents(cls);
   $('#btnSel').textContent=selMode?'Cancel':'Select';
@@ -3912,10 +3943,12 @@ function saveSched(cls){
   var start=$('#schedStart').value, end=$('#schedEnd').value;
   var g=parseInt($('#schedGrace').value,10); if(isNaN(g)||g<0) g=15;
   var color=(cls.sched&&cls.sched.color)||'';
-  if(!days.length&&!start&&!end&&!color){ delete cls.sched; }
+  var arch=(cls.sched&&cls.sched.ar)||0;
+  if(!days.length&&!start&&!end&&!color&&!arch){ delete cls.sched; }
   else{
     cls.sched={days:days,start:start,end:end,grace:g};
     if(color) cls.sched.color=color;
+    if(arch) cls.sched.ar=1;
   }
   touchRoster(); renderSelects();
 }
@@ -3929,6 +3962,13 @@ function fmtSched(c){
 }
 var PASTELS=['#F5C6C6','#F8DCB8','#F5EFB5','#C7E8CF','#C4E2F2','#D6D0F0','#F1CDE2','#E3D9C8'];
 function classColor(c){ return (c&&c.sched&&c.sched.color)||''; }
+function classActive(c){ return !(c&&c.sched&&c.sched.ar); }
+function setClassArch(cls,on){
+  if(on){ if(!cls.sched) cls.sched={days:[],start:'',end:'',grace:15}; cls.sched.ar=1; }
+  else if(cls.sched){ delete cls.sched.ar;
+    if(!(cls.sched.days&&cls.sched.days.length)&&!cls.sched.start&&!cls.sched.end&&!cls.sched.color) delete cls.sched; }
+  touchRoster();
+}
 function setClassColor(cls,hex){
   if(hex){
     if(!cls.sched) cls.sched={days:[],start:'',end:'',grace:15};
@@ -4138,6 +4178,7 @@ function handleScan(text){
   if(!hit){ stampShow('err','UNKNOWN','Student not in roster','Was this student removed?'); beep('err'); return; }
   var cls=hit.cls, stu=hit.stu;
   if(stu.ar){ stampShow('err','ARCHIVED',stu.name,'Restore them in Roster to scan again'); beep('err'); return; }
+  if(!classActive(cls)){ stampShow('err','CLASS ARCHIVED',stu.name,'Unarchive '+cls.name+' in Roster to scan'); beep('err'); return; }
   var prev=marksFor(cls.id,curScanDate())[stu.id];
   if(prev&&prev.st){
     stampShow('dup','ALREADY '+wordFor(prev.st).toUpperCase(),stu.name,cls.name+' · first scan '+(prev.ts?fmtTs(prev.ts):(prev.tm||'')));
@@ -4365,7 +4406,7 @@ function openOnline(){
     '<button class="btn soft" id="olClose">Close</button></div>';
   document.body.appendChild(wrap);
   var sel=wrap.querySelector('#olClass');
-  sel.innerHTML=state.classes.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
+  sel.innerHTML=state.classes.filter(classActive).map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
   if(getClass($('#scanClass').value)) sel.value=$('#scanClass').value;
   var mins=30;
   var durBtns=Array.prototype.slice.call(wrap.querySelectorAll('#olDur button'));
@@ -4434,7 +4475,7 @@ function openEnroll(){
     '<button class="btn soft" id="enClose">Close</button></div>';
   document.body.appendChild(wrap);
   var sel=wrap.querySelector('#enClass');
-  sel.innerHTML='<option value="ALL">All classes</option>'+state.classes.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
+  sel.innerHTML='<option value="ALL">All classes</option>'+state.classes.filter(classActive).map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join('');
   var durBtns=Array.prototype.slice.call(wrap.querySelectorAll('#enDur button'));
   durBtns.forEach(function(b){
     b.onclick=function(){ wrap.querySelector('#enMins').value=b.getAttribute('data-m'); };
@@ -4508,6 +4549,209 @@ function submitLinkFor(t){
     try{ link+='#q='+btoa(unescape(encodeURIComponent(JSON.stringify({t:t.cfg.qtype,c:t.cfg.choices||[]})))); }catch(e){}
   }
   return link;
+}
+function parseRubric(rub){
+  var out=[];
+  String(rub||'').split('\n').forEach(function(line){
+    var m=line.split('=');
+    if(m.length>=2){
+      var nm=m.slice(0,-1).join('=').trim();
+      var mx=parseFloat(m[m.length-1]);
+      if(nm&&!isNaN(mx)) out.push({n:nm,max:mx});
+    }
+  });
+  return out;
+}
+function gradeFor(taskId,sid){
+  var best=null;
+  for(var u in state.gr){
+    var g=state.gr[u];
+    if(g.task===taskId&&g.sid===sid&&(!best||Number(g.ts)>=Number(best.ts))) best=g;
+  }
+  return best;
+}
+function pushGrade(taskId,sid,scObj,total){
+  var ev={u:'gr'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    ts:Date.now(),task:taskId,sid:sid,sc:JSON.stringify(scObj||{}),total:Number(total)||0};
+  state.gr[ev.u]=ev;
+  state.grOut=state.grOut||[]; state.grOut.push(ev);
+  save(); requestSync();
+}
+function openGrade(t,sids,label){
+  var crits=parseRubric(t.rub);
+  var existing=gradeFor(t.id,sids[0]);
+  var exSc={}; try{ exSc=existing?JSON.parse(existing.sc||'{}'):{}; }catch(e){}
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">Grade: '+esc(label)+'</h2>'+
+    '<p class="muted">'+esc(t.title)+(t.pts?' · out of '+t.pts:'')+
+      (sids.length>1?' · score applies to all '+sids.length+' members':'')+'</p>'+
+    (crits.length
+      ? crits.map(function(c,i){
+          var v=(exSc.r&&exSc.r[i]!=null)?exSc.r[i]:'';
+          return '<div class="row" style="margin-top:6px"><div class="grow" style="align-self:center">'+esc(c.n)+' <span class="muted">/'+c.max+'</span></div>'+
+            '<input type="number" class="grIn" value="'+v+'" min="0" max="'+c.max+'" style="max-width:90px"></div>';
+        }).join('')+'<p style="margin-top:8px"><b>Total: <span id="grTot">0</span>'+(t.pts?'/'+t.pts:'')+'</b></p>'
+      : '<div><label>Score'+(t.pts?' (out of '+t.pts+')':'')+'</label><input type="number" id="grOne" min="0" value="'+(existing?existing.total:'')+'"></div>')+
+    '<button class="btn" id="grSave">Save grade</button>'+
+    '<button class="btn soft" id="grClose">Cancel</button></div>';
+  document.body.appendChild(wrap);
+  function tot(){
+    var s=0;
+    $$('#grTot') && Array.prototype.slice.call(wrap.querySelectorAll('.grIn')).forEach(function(inp){ s+=Number(inp.value)||0; });
+    var el=wrap.querySelector('#grTot'); if(el) el.textContent=s;
+    return s;
+  }
+  Array.prototype.slice.call(wrap.querySelectorAll('.grIn')).forEach(function(inp){ inp.oninput=tot; });
+  tot();
+  wrap.querySelector('#grSave').onclick=function(){
+    var scObj,total;
+    if(crits.length){
+      var r=[];
+      Array.prototype.slice.call(wrap.querySelectorAll('.grIn')).forEach(function(inp){ r.push(Number(inp.value)||0); });
+      scObj={r:r}; total=tot();
+    } else {
+      total=Number(wrap.querySelector('#grOne').value);
+      if(isNaN(total)){ toast('Type a score'); return; }
+      scObj={};
+    }
+    sids.forEach(function(sid){ pushGrade(t.id,sid,scObj,total); });
+    wrap.remove();
+    openTaskView(t.id);
+    toast('Graded '+sids.length+' student'+(sids.length===1?'':'s')+': '+total+(t.pts?'/'+t.pts:''));
+  };
+  wrap.querySelector('#grClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+}
+function csvCell(v){ v=String(v==null?'':v); return '"'+v.replace(/"/g,'""')+'"'; }
+function buildAllStudentsCSV(){
+  var rows=[['Class','Student ID','Name','Email']];
+  state.classes.filter(classActive).forEach(function(c){
+    sortedStudents(c).forEach(function(s){ rows.push([c.name,s.num||'',s.name,s.em||'']); });
+  });
+  return rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+}
+function buildGradesCSV(clsId,taskIds){
+  var cls=getClass(clsId); if(!cls) return '';
+  var tasks=taskIds.map(getTask).filter(Boolean);
+  var head=['Student ID','Name','Email'];
+  tasks.forEach(function(t){ head.push(t.title+(t.pts?' ('+t.pts+')':'')); });
+  head.push('Total');
+  var rows=[head];
+  var maps={}; tasks.forEach(function(t){ maps[t.id]=subsForTask(t.id); });
+  var studs=sortedStudents(cls).concat(archivedStudents(cls).map(function(s){
+    var c2={}; for(var k in s) c2[k]=s[k]; c2.name=s.name+' (archived)'; return c2;
+  }));
+  studs.forEach(function(s){
+    var row=[s.num||'',s.name,s.em||''], sum=0;
+    tasks.forEach(function(t){
+      var g=gradeFor(t.id,s.id);
+      if(g){ row.push(g.total); sum+=Number(g.total)||0; }
+      else if(maps[t.id][s.id]) row.push('(submitted)');
+      else row.push('not submitted');
+    });
+    row.push(sum);
+    rows.push(row);
+  });
+  return rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+}
+function buildClassRosterCSV(cls){
+  var rows=[['Student ID','Name','Email','Status']];
+  cls.students.slice().sort(function(a,b){ return a.name.localeCompare(b.name); }).forEach(function(s){
+    rows.push([s.num||'',s.name,s.em||'', s.ar?'archived':(s.pin?'pinned':'active')]);
+  });
+  return rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+}
+function buildClassAttendanceCSV(cls){
+  var latest={};
+  state.ev.forEach(function(e){
+    if(e.c!==cls.id) return;
+    var k=e.d+'|'+e.s;
+    if(!latest[k]||Number(e.ts)>=Number(latest[k].ts)) latest[k]=e;
+  });
+  var arr=[]; for(var k in latest){ if(latest[k].st) arr.push(latest[k]); }
+  arr.sort(function(a,b){ return a.d===b.d ? String(a.n).localeCompare(String(b.n)) : (a.d<b.d?-1:1); });
+  var rows=[['Date','Time in','Student ID','Name','Status','Via']];
+  arr.forEach(function(e){
+    var st=findStu(cls,e.s);
+    rows.push([e.d,(e.st==='P'||e.st==='L')?(e.tm||''):'',(st&&st.num)||'',e.n||'',wordFor(e.st),e.via||'']);
+  });
+  return rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+}
+function openArchiveClass(cls){
+  var unsynced=state.ev.some(function(e){ return e.c===cls.id && !e.sy; });
+  function rowChk(id,checked,inner){
+    return '<label style="display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--line);border-radius:10px;padding:10px;margin-top:8px;cursor:pointer">'+
+      '<input type="checkbox" id="'+id+'"'+(checked?' checked':'')+' style="width:22px;height:22px;accent-color:var(--board);flex:0 0 auto">'+
+      '<span>'+inner+'</span></label>';
+  }
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">Archive '+esc(cls.name)+'</h2>'+
+    '<p class="muted">The class disappears from the Scan, Records and Tasks pickers and door scans are blocked — but it stays under "Archived classes" in Roster and in Export, fully downloadable. Unarchive anytime.</p>'+
+    rowChk('acPkg',true,'<b>Download its archive package now</b><br><span class="muted">Two CSVs: full attendance log + class roster</span>')+
+    rowChk('acPurge',false,'<b>Also remove its attendance records from this device</b><br><span class="muted">'+
+      (unsynced
+        ?'<span style="color:var(--a)">Blocked: some marks are not in your Google Sheet yet — press Sync now first.</span>'
+        :'Frees space on this device only. Everything stays permanently in your Google Sheet (Events + Report tabs) and in the package above. Records here for this class will be empty afterward, even if you unarchive later.')+'</span>')+
+    '<button class="btn" id="acGo">Archive class</button>'+
+    '<button class="btn soft" id="acClose">Cancel</button></div>';
+  document.body.appendChild(wrap);
+  if(unsynced){ var pc=wrap.querySelector('#acPurge'); pc.checked=false; pc.disabled=true; }
+  wrap.querySelector('#acGo').onclick=function(){
+    if(wrap.querySelector('#acPkg').checked){
+      var base=(cls.name.replace(/[^\w\- ]+/g,'')||'class');
+      var att=buildClassAttendanceCSV(cls), ros=buildClassRosterCSV(cls);
+      dl(base+'-attendance-'+todayStr()+'.csv','text/csv',att);
+      setTimeout(function(){ dl(base+'-roster-'+todayStr()+'.csv','text/csv',ros); },400);
+    }
+    if(wrap.querySelector('#acPurge').checked && !unsynced){
+      state.ev=state.ev.filter(function(e){ return e.c!==cls.id; });
+    }
+    setClassArch(cls,true);
+    save(); renderSelects(); renderClassDetail();
+    wrap.remove();
+    toast('Class archived');
+  };
+  wrap.querySelector('#acClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
+}
+function openGradesCSV(){
+  if(!state.classes.length){ toast('Add a class first'); return; }
+  var wrap=document.createElement('div');
+  wrap.className='modal show';
+  wrap.innerHTML='<div class="box"><h2 style="margin:0">Task scores → CSV</h2>'+
+    '<div><label>Class</label><select id="gxClass">'+state.classes.map(function(c){
+      return '<option value="'+esc(c.id)+'">'+esc(c.name)+(classActive(c)?'':' (archived)')+'</option>'; }).join('')+'</select></div>'+
+    '<div style="margin-top:8px"><label>Tasks to include</label><div id="gxTasks"></div></div>'+
+    '<button class="btn" id="gxGo">Export CSV</button>'+
+    '<button class="btn soft" id="gxClose">Close</button></div>';
+  document.body.appendChild(wrap);
+  function rowLbl(inner){
+    return '<label style="display:flex;gap:10px;align-items:center;border:1.5px solid var(--line);border-radius:10px;padding:10px;margin-top:8px;cursor:pointer">'+inner+'</label>';
+  }
+  function paint(){
+    var cid=wrap.querySelector('#gxClass').value;
+    var ts=classTasks(cid).filter(function(t){ return t.type==='assign'||t.type==='question'; });
+    wrap.querySelector('#gxTasks').innerHTML=ts.length
+      ? rowLbl('<input type="checkbox" id="gxAll" checked style="width:20px;height:20px;accent-color:var(--board)"><span><b>All tasks ('+ts.length+')</b></span>')+
+        ts.map(function(t){ return rowLbl('<input type="checkbox" class="gxT" data-t="'+esc(t.id)+'" checked style="width:20px;height:20px;accent-color:var(--board)"><span>'+esc(t.title)+'</span>'); }).join('')
+      : '<p class="muted">No gradable tasks in this class yet.</p>';
+    var all=wrap.querySelector('#gxAll');
+    if(all) all.onchange=function(){
+      Array.prototype.slice.call(wrap.querySelectorAll('.gxT')).forEach(function(c){ c.checked=all.checked; });
+    };
+  }
+  wrap.querySelector('#gxClass').onchange=paint; paint();
+  wrap.querySelector('#gxGo').onclick=function(){
+    var cid=wrap.querySelector('#gxClass').value, ids=[];
+    Array.prototype.slice.call(wrap.querySelectorAll('.gxT')).forEach(function(c){ if(c.checked) ids.push(c.getAttribute('data-t')); });
+    if(!ids.length){ toast('Tick at least one task'); return; }
+    dl('scores-'+(((getClass(cid)||{}).name)||'class').replace(/[^\w\- ]+/g,'')+'-'+todayStr()+'.csv','text/csv',buildGradesCSV(cid,ids));
+    toast('Exported '+ids.length+' task'+(ids.length===1?'':'s'));
+  };
+  wrap.querySelector('#gxClose').onclick=function(){ wrap.remove(); };
+  wrap.onclick=function(e){ if(e.target===wrap) wrap.remove(); };
 }
 function showSubmitLink(t){
   var url=(state.settings.url||'').trim();
@@ -4618,6 +4862,9 @@ function openTaskEditor(taskId){
       '<div class="row"><div><label>Points</label><input type="number" id="tkPts" min="0" value="'+((t&&t.pts)||0)+'"></div>'+
         '<div><label>Due date</label><input type="date" id="tkDate"></div>'+
         '<div><label>Time</label><input type="time" id="tkTime"></div></div>'+
+      '<div id="tkModeWrap"><label>Work type</label><div class="seg" id="tkMode">'+
+        '<button data-md="ind">Individual</button><button data-md="group">Group work</button></div>'+
+        '<div id="tkGroups" style="margin-top:8px"></div></div>'+
       '<div id="tkQWrap" style="display:none"><label>Question type</label><div class="seg" id="tkQt">'+
         ['short|Short answer','mc|Multiple choice','poll|Poll'].map(function(p){ var a=p.split('|');
           return '<button data-qt="'+a[0]+'"'+((cfg.qtype||'short')===a[0]?' class="on" style="background:var(--board);color:var(--chalk)"':'')+'>'+a[1]+'</button>'; }).join('')+
@@ -4633,10 +4880,10 @@ function openTaskEditor(taskId){
     '<button class="btn soft" id="tkClose">Close</button></div>';
   document.body.appendChild(wrap);
   var selC=wrap.querySelector('#tkClass');
-  selC.innerHTML=state.classes.map(function(c0){
+  selC.innerHTML=state.classes.filter(function(c0){ return classActive(c0)||c0.id===cid; }).map(function(c0){
     return '<option value="'+esc(c0.id)+'"'+(c0.id===cid?' selected':'')+'>'+esc(c0.name)+'</option>';
   }).join('');
-  selC.onchange=function(){ cid=selC.value; cls=getClass(cid); paintTopics(); };
+  selC.onchange=function(){ cid=selC.value; cls=getClass(cid); groups=[]; paintTopics(); paintMode(); };
   function paintTopics(){
     var tops=classTasks(cid).filter(function(x){ return x.type==='topic'&&(!t||x.id!==t.id); });
     $('#tkTopic').innerHTML='<option value="">— none —</option>'+
@@ -4658,7 +4905,50 @@ function openTaskEditor(taskId){
   };
   var curType=(t&&t.type)||'assign';
   var curQt=cfg.qtype||'short';
+  var curMode=(cfg.mode==='group')?'group':'ind';
+  var groups=JSON.parse(JSON.stringify(cfg.groups||[]));
   var links=(cfg.links||[]).slice();
+  function paintGroups(){
+    var studs=sortedStudents(getClass(cid)||{students:[]});
+    var htmlG='<div class="row"><div class="fit" style="flex:0 0 130px"><label>How many groups</label>'+
+      '<input type="number" id="tkGN" min="2" max="30" value="'+(groups.length||2)+'"></div>'+
+      '<button class="btn soft fit" id="tkGBuild" type="button">'+(groups.length?'Rebuild':'Create groups')+'</button></div>';
+    if(groups.length){
+      htmlG+='<p class="muted" style="margin:6px 0">Assign each student a group, then pick each group\'s ⭐ leader. Grading a group scores every member at once.</p>';
+      htmlG+=studs.map(function(s){
+        var gi=-1; groups.forEach(function(g,i){ if(g.members.indexOf(s.id)>=0) gi=i; });
+        return '<div class="item"><div class="grow">'+esc(s.name)+'</div><select data-gs="'+esc(s.id)+'" style="max-width:130px">'+
+          '<option value="-1"'+(gi<0?' selected':'')+'>—</option>'+
+          groups.map(function(g,i){ return '<option value="'+i+'"'+(i===gi?' selected':'')+'>'+esc(g.n)+'</option>'; }).join('')+
+          '</select></div>';
+      }).join('');
+      htmlG+=groups.map(function(g,i){
+        return '<div class="item"><div class="grow">⭐ Leader of '+esc(g.n)+'</div><select data-gl="'+i+'" style="max-width:170px">'+
+          '<option value="">—</option>'+
+          g.members.map(function(sid){ var st0=findStu(getClass(cid),sid);
+            return st0?'<option value="'+esc(sid)+'"'+(g.leader===sid?' selected':'')+'>'+esc(st0.name)+'</option>':''; }).join('')+
+          '</select></div>';
+      }).join('');
+    }
+    $('#tkGroups').innerHTML=htmlG;
+    $('#tkGBuild').onclick=function(){
+      var n=parseInt($('#tkGN').value,10); if(isNaN(n)||n<2) n=2; if(n>30) n=30;
+      groups=[]; for(var i=0;i<n;i++) groups.push({n:'Group '+(i+1),members:[],leader:''});
+      studs.forEach(function(s,i){ groups[i%n].members.push(s.id); });
+      paintGroups();
+    };
+    $$('#tkGroups [data-gs]').forEach(function(selG){
+      selG.onchange=function(){
+        var sid=selG.getAttribute('data-gs'), gi=parseInt(selG.value,10);
+        groups.forEach(function(g){ var ix=g.members.indexOf(sid); if(ix>=0){ g.members.splice(ix,1); if(g.leader===sid) g.leader=''; } });
+        if(gi>=0&&groups[gi]) groups[gi].members.push(sid);
+        paintGroups();
+      };
+    });
+    $$('#tkGroups [data-gl]').forEach(function(selL){
+      selL.onchange=function(){ groups[parseInt(selL.getAttribute('data-gl'),10)].leader=selL.value; };
+    });
+  }
   function paintLinks(){
     $('#tkLinks').innerHTML=links.map(function(L,i){
       var label=(typeof L==='string')?L:(((L&&L.n)?L.n+' — ':'')+((L&&L.u)||''));
@@ -4677,6 +4967,15 @@ function openTaskEditor(taskId){
     $('#tkChWrap').style.display=(curType==='question'&&curQt!=='short')?'block':'none';
     $('#tkKeyWrap').style.display=(curType==='question'&&curQt==='mc')?'block':'none';
     if(curType==='question'&&curQt==='mc') paintKey();
+    var wt=(curType==='assign'||curType==='question');
+    $('#tkModeWrap').style.display=wt?'block':'none';
+    $$('#tkMode button').forEach(function(b){
+      var on=b.getAttribute('data-md')===curMode;
+      b.classList.toggle('on',on);
+      b.style.background=on?'var(--board)':''; b.style.color=on?'var(--chalk)':'';
+    });
+    $('#tkGroups').style.display=(wt&&curMode==='group')?'block':'none';
+    if(wt&&curMode==='group') paintGroups();
   }
   $$('#tkType button').forEach(function(b){ b.onclick=function(){
     curType=b.getAttribute('data-ty');
@@ -4688,6 +4987,7 @@ function openTaskEditor(taskId){
     $$('#tkQt button').forEach(function(x){ x.classList.remove('on'); x.style.background=''; x.style.color=''; });
     b.classList.add('on'); b.style.background='var(--board)'; b.style.color='var(--chalk)';
     paintMode(); }; });
+  $$('#tkMode button').forEach(function(b){ b.onclick=function(){ curMode=b.getAttribute('data-md'); paintMode(); }; });
   $$('#tkEd').forEach(function(){});
   $$('[data-cmd]').forEach(function(b){
     b.onmousedown=function(e){ e.preventDefault(); };
@@ -4745,6 +5045,12 @@ function openTaskEditor(taskId){
         if(curQt==='mc'&&$('#tkKey').value!=='') cfg2.key=Number($('#tkKey').value);
       }
     }
+    if(curType==='assign'||curType==='question'){
+      if(curMode==='group'){
+        if(!groups.length){ toast('Create the groups first'); return; }
+        cfg2.mode='group'; cfg2.groups=groups;
+      } else cfg2.mode='ind';
+    }
     if(curType!=='topic'&&curType!=='material'&&!due){ toast('Set a deadline — the submit link closes at it'); return; }
     var savedTask;
     if(t){ t.type=curType; t.title=title; t.due=due; t.pts=Number($('#tkPts').value)||0; t.rub=$('#tkRub').value.trim(); t.cfg=cfg2; savedTask=t; }
@@ -4791,22 +5097,59 @@ function openTaskView(taskId){
       return '<div class="item"><div class="grow">'+esc(c)+'</div><span class="muted" style="font-family:var(--mono)">'+tally[i]+'</span></div>'; }).join('')+'</div>';
   }
   if(t.type!=='material'){
-    htmlOut+='<div class="card"><div style="display:flex;align-items:center;gap:8px">'+
-      '<h2 style="margin-bottom:0;flex:1">Students</h2>'+
-      '<button class="btn soft sm" id="tvNudgeSel">Nudge ticked</button></div>'+
-      '<div id="tvList" style="margin-top:8px">'+
-      act.map(function(s){
-        var subs=sm[s.id];
-        var status;
-        if(subs){ var last=subs[subs.length-1];
-          var what=last.kind==='file'?('file: '+esc(last.fn||'')):last.kind==='link'?('<a href="'+esc(last.url)+'" target="_blank" rel="noopener">link</a>'):('answer: '+esc((last.fn||'').slice(0,60)));
-          if(last.kind==='file'&&last.url) what='<a href="'+esc(last.url)+'" target="_blank" rel="noopener">'+what+'</a>';
-          status='<div class="sub" style="color:var(--p)">✓ '+esc(nowD(last.ts))+' · '+what+'</div>';
-        } else status='<div class="sub" style="color:var(--a)">not submitted</div>';
-        return '<div class="item">'+(subs?'':'<input type="checkbox" class="selBox" data-nsel="'+esc(s.id)+'" checked>')+
-          '<div class="grow"><div class="nm">'+esc(s.name)+'</div>'+status+'</div>'+
-          (subs?'':'<button class="btn soft sm" data-n1="'+esc(s.id)+'">Nudge</button>')+'</div>';
-      }).join('')+'</div></div>';
+    var isGroup=(t.cfg&&t.cfg.mode==='group'&&(t.cfg.groups||[]).length);
+    var chip=function(sid){
+      var g=gradeFor(t.id,sid);
+      return g?'<span class="badge" style="margin-left:6px;font-family:var(--mono)">'+g.total+(t.pts?'/'+t.pts:'')+'</span>':'';
+    };
+    var subLine=function(s){
+      var subs=sm[s.id];
+      if(subs){ var last=subs[subs.length-1];
+        var what=last.kind==='file'?('file: '+esc(last.fn||'')):last.kind==='link'?('<a href="'+esc(last.url)+'" target="_blank" rel="noopener">link</a>'):('answer: '+esc((last.fn||'').slice(0,60)));
+        if(last.kind==='file'&&last.url) what='<a href="'+esc(last.url)+'" target="_blank" rel="noopener">'+what+'</a>';
+        return '<div class="sub" style="color:var(--p)">✓ '+esc(nowD(last.ts))+' · '+what+'</div>';
+      }
+      return '<div class="sub" style="color:var(--a)">not submitted</div>';
+    };
+    if(isGroup){
+      var gs=t.cfg.groups;
+      htmlOut+='<div class="card"><h2>Groups</h2>'+gs.map(function(g,gi){
+        var anySub=false; g.members.forEach(function(sid){ if(sm[sid]) anySub=true; });
+        var lead=findStu(cls,g.leader);
+        return '<div style="border:1.5px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">'+
+          '<div style="display:flex;align-items:center;gap:8px"><b style="flex:1">'+esc(g.n)+'</b>'+
+          (anySub?'':'<button class="btn soft sm" data-ng="'+gi+'">Nudge group</button>')+
+          '<button class="btn soft sm" data-gg="'+gi+'">Grade group</button></div>'+
+          (lead?'<div class="sub">⭐ Leader: '+esc(lead.name)+'</div>':'')+
+          g.members.map(function(sid){
+            var s0=findStu(cls,sid); if(!s0) return '';
+            return '<div class="item"><div class="grow"><div class="nm">'+esc(s0.name)+chip(sid)+'</div>'+subLine(s0)+'</div>'+
+              '<button class="btn soft sm" data-g1="'+esc(sid)+'">Grade</button></div>';
+          }).join('')+'</div>';
+      }).join('');
+      var grouped={}; gs.forEach(function(g){ g.members.forEach(function(sid){ grouped[sid]=1; }); });
+      var loose=act.filter(function(s){ return !grouped[s.id]; });
+      if(loose.length){
+        htmlOut+='<div class="sub" style="margin-top:10px;font-weight:700">Ungrouped</div>'+loose.map(function(s){
+          return '<div class="item">'+(sm[s.id]?'':'<input type="checkbox" class="selBox" data-nsel="'+esc(s.id)+'" checked>')+
+            '<div class="grow"><div class="nm">'+esc(s.name)+chip(s.id)+'</div>'+subLine(s)+'</div>'+
+            '<button class="btn soft sm" data-g1="'+esc(s.id)+'">Grade</button>'+
+            (sm[s.id]?'':'<button class="btn soft sm" data-n1="'+esc(s.id)+'">Nudge</button>')+'</div>';
+        }).join('');
+      }
+      htmlOut+='</div>';
+    } else {
+      htmlOut+='<div class="card"><div style="display:flex;align-items:center;gap:8px">'+
+        '<h2 style="margin-bottom:0;flex:1">Students</h2>'+
+        '<button class="btn soft sm" id="tvNudgeSel">Nudge ticked</button></div>'+
+        '<div id="tvList" style="margin-top:8px">'+
+        act.map(function(s){
+          return '<div class="item">'+(sm[s.id]?'':'<input type="checkbox" class="selBox" data-nsel="'+esc(s.id)+'" checked>')+
+            '<div class="grow"><div class="nm">'+esc(s.name)+chip(s.id)+'</div>'+subLine(s)+'</div>'+
+            '<button class="btn soft sm" data-g1="'+esc(s.id)+'">Grade</button>'+
+            (sm[s.id]?'':'<button class="btn soft sm" data-n1="'+esc(s.id)+'">Nudge</button>')+'</div>';
+        }).join('')+'</div></div>';
+    }
   }
   v.innerHTML=htmlOut;
   $('#tvBack').onclick=function(){ taskViewId=null; renderTasks(); };
@@ -4820,12 +5163,24 @@ function openTaskView(taskId){
       .then(function(j){ toast(j.ok?('Nudged '+j.sent+' student'+(j.sent===1?'':'s')+' by email'):'Nudge failed'); if(btn) btn.disabled=false; })
       .catch(function(){ toast('No connection'); if(btn) btn.disabled=false; });
   }
-  $$('#tvList [data-n1]').forEach(function(b){ b.onclick=function(){ doNudge([b.getAttribute('data-n1')],b); }; });
+  $$('#taskView [data-n1]').forEach(function(b){ b.onclick=function(){ doNudge([b.getAttribute('data-n1')],b); }; });
   var nSel=$('#tvNudgeSel');
   if(nSel){ nSel.onclick=function(){
-    var ids=[]; $$('#tvList [data-nsel]').forEach(function(c){ if(c.checked) ids.push(c.getAttribute('data-nsel')); });
+    var ids=[]; $$('#taskView [data-nsel]').forEach(function(c){ if(c.checked) ids.push(c.getAttribute('data-nsel')); });
     doNudge(ids,nSel);
   }; }
+  $$('#taskView [data-g1]').forEach(function(b){ b.onclick=function(){
+    var sid=b.getAttribute('data-g1'); var s0=findStu(cls,sid);
+    openGrade(t,[sid],s0?s0.name:'Student');
+  }; });
+  $$('#taskView [data-gg]').forEach(function(b){ b.onclick=function(){
+    var gg=t.cfg.groups[Number(b.getAttribute('data-gg'))];
+    if(gg&&gg.members.length) openGrade(t,gg.members.slice(),gg.n+' ('+gg.members.length+')');
+  }; });
+  $$('#taskView [data-ng]').forEach(function(b){ b.onclick=function(){
+    var gg=t.cfg.groups[Number(b.getAttribute('data-ng'))];
+    if(gg) doNudge(gg.members.slice(),b);
+  }; });
   var aBtn=$('#tvAssign');
   if(aBtn){ aBtn.onclick=function(){
     var url=(state.settings.url||'').trim(), token=(state.settings.token||'').trim();
@@ -5165,6 +5520,7 @@ function syncNow(auto){
   var payload={t:token,ev:outEv};
   if(state.rosterDirty) payload.roster={ts:state.rosterTs,rows:rosterRows()};
   if(state.tasksDirty) payload.tasks={ts:state.tasksTs,rows:taskRows()};
+  if(state.grOut&&state.grOut.length) payload.gr=state.grOut.slice();
   fetch(url,{method:'POST',body:JSON.stringify(payload)})
   .then(function(r){ return r.json(); })
   .then(function(j){
@@ -5172,6 +5528,7 @@ function syncNow(auto){
     var sent={}; outEv.forEach(function(e){ sent[e.u]=1; });
     state.ev.forEach(function(e){ if(sent[e.u]) e.sy=1; });
     if(payload.roster) state.rosterDirty=false;
+    if(payload.gr) state.grOut=[];
     return fetch(url+'?t='+encodeURIComponent(token)+'&since='+state.lastServerTs+'&rts='+state.rosterTs+'&tts='+state.tasksTs)
       .then(function(r){ return r.json(); });
   })
@@ -5388,6 +5745,8 @@ function init(){
   $('#btnLogCSV').onclick=exportLogCSV;
   $('#btnLogPDF').onclick=exportLogPDF;
   $('#btnCards').onclick=function(){ printCards($('#expClass').value); };
+  $('#btnGradesCSV').onclick=openGradesCSV;
+  $('#btnAllStuCSV').onclick=function(){ dl('all-students-'+todayStr()+'.csv','text/csv',buildAllStudentsCSV()); toast('Exported all active-class students'); };
   $('#btnBackup').onclick=doBackup;
   $('#btnImport').onclick=function(){ $('#importIn').click(); };
   $('#importIn').onchange=function(){ if(this.files[0]) doRestore(this.files[0]); this.value=''; };
