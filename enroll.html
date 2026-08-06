@@ -77,7 +77,7 @@ input{font-family:var(--body);font-size:16px;border:1.5px solid var(--line);bord
     <input id="emailIn" type="email" placeholder="you@gmail.com" autocomplete="email" autocapitalize="off">
     <p class="muted" style="margin-top:8px">Your email is saved into your class roster and used for attendance confirmations, task updates, and your personal QR code.</p>
     <label style="margin-top:12px">Your photo (required)</label>
-    <p class="muted" style="margin-bottom:6px">This becomes your profile picture and appears on your Participation Points Card.</p>
+    <p class="muted" style="margin-bottom:6px">Live camera only — this becomes your profile picture and appears on your Participation Points Card.</p>
     <div id="phWrap" style="display:none;position:relative;border-radius:10px;overflow:hidden;background:#101513;max-width:240px;margin:0 auto 8px;aspect-ratio:1">
       <video id="phCam" playsinline muted style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1)"></video>
     </div>
@@ -86,9 +86,7 @@ input{font-family:var(--body);font-size:16px;border:1.5px solid var(--line);bord
     <button class="btn" id="phTake" type="button" style="display:none">Take photo</button>
     <div class="row" id="phAlt">
       <button class="btn soft" id="phRetake" type="button" style="display:none">Retake</button>
-      <button class="btn soft" id="phUp" type="button">Upload a photo instead</button>
     </div>
-    <input type="file" id="phIn" accept="image/*" capture="user" class="hidden">
     <canvas id="phCv" class="hidden"></canvas>
     <button class="btn" id="btnEnroll">Enroll me</button>
     <button class="btn soft" id="btnBack2">Back</button>
@@ -222,7 +220,7 @@ function phFromSource(src,w0,h0,mirror){
   phSet(cv.toDataURL('image/jpeg',0.82));
 }
 $('#phStart').onclick=function(){
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ $('#phIn').click(); return; }
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ alert('This device has no usable camera. Open this link on your phone to enroll.'); return; }
   navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'user'},width:{ideal:960}},audio:false})
   .then(function(s){
     phStream=s;
@@ -232,7 +230,7 @@ $('#phStart').onclick=function(){
     $('#phTake').style.display='flex';
     $('#phShot').style.display='none';
   })
-  .catch(function(){ alert('Camera blocked — use "Upload a photo instead".'); });
+  .catch(function(){ alert('Camera access was blocked. Allow the camera for this site, or open this link on your phone.'); });
 };
 $('#phTake').onclick=function(){
   var v=$('#phCam');
@@ -247,26 +245,11 @@ $('#phRetake').onclick=function(){
   $('#phStart').style.display='flex';
   $('#phStart').click();
 };
-$('#phUp').onclick=function(){ $('#phIn').click(); };
-$('#phIn').onchange=function(){
-  var file=this.files[0]; this.value='';
-  if(!file) return;
-  var img=new Image();
-  img.onload=function(){
-    phFromSource(img,img.width,img.height,false);
-    URL.revokeObjectURL(img.src);
-    phStop();
-    $('#phStart').style.display='none';
-    $('#phRetake').style.display='flex';
-  };
-  img.src=URL.createObjectURL(file);
-};
-
 $('#btnEnroll').onclick=function(){
   var email=$('#emailIn').value.trim();
   if(!/^\S+@\S+\.\S+$/.test(email)){ showResult('err','CHECK EMAIL','Invalid address','Type it again carefully'); return; }
   var b=this; b.disabled=true; b.textContent='Enrolling…';
-  if(!photoB64){ showResult('err','PHOTO REQUIRED','Take your photo first','Use the camera or upload one'); return; }
+  if(!photoB64){ showResult('err','PHOTO REQUIRED','Take your photo first','Open the camera above'); return; }
   post({op:'enset',k:KEY,num:$('#numIn').value.trim(),i:pickedI,email:email,pb64:photoB64,pmime:'image/jpeg'})
   .then(function(j){
     if(j.ok){
@@ -280,7 +263,7 @@ $('#btnEnroll').onclick=function(){
     if(j.err==='already'){ showResult('warn','ALREADY ENROLLED',j.name||'This student','If that was not you, tell your teacher NOW.'); }
     else if(j.err==='expired'){ fail('Link expired','Ask your teacher for a new enrollment link.'); }
     else if(j.err==='bademail'){ showResult('err','CHECK EMAIL','Invalid address','Type it again carefully'); }
-    else if(j.err==='nophoto'){ showResult('err','PHOTO REQUIRED','Take your photo first','Use the camera or upload one'); }
+    else if(j.err==='nophoto'){ showResult('err','PHOTO REQUIRED','Take your photo first','Open the camera above'); }
     else if(j.err==='toobig'){ showResult('err','PHOTO TOO LARGE','Try again','Retake with the camera'); }
     else { showResult('err','NOT FOUND','Try again','Search your ID once more'); }
   })
